@@ -1,4 +1,5 @@
 import {
+  animalBodyColor,
   drawAnimalHead,
   type AnimalKind,
 } from '../../art/characters';
@@ -50,15 +51,6 @@ const FLOWER_STYLES = [
   { color: '#ffb347', center: '#ffe36e' },
 ];
 
-const ANIMAL_BODY: Record<AnimalKind, string> = {
-  bunny: '#fffdfd',
-  bear: '#c98f63',
-  fox: '#f59a4a',
-  hedgehog: '#f2d2b0',
-  kitten: '#efe6fb',
-  bird: '#ffd36e',
-};
-
 const GLYPHS = ['♪', '♫', '♩', '♬'];
 const mod = (value: number, span: number) => ((value % span) + span) % span;
 
@@ -102,7 +94,7 @@ class MusicGame extends CanvasGame {
       x: this.width * xs[index],
       y: groundTop - size * 1.4,
       size,
-      body: ANIMAL_BODY[kind],
+      body: animalBodyColor(kind),
       dance: 0,
       bob: Math.random() * Math.PI * 2,
     }));

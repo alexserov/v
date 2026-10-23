@@ -283,6 +283,74 @@ body {
   transform: translateY(-1px);
 }
 
+.peekaboo-target {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  width: 78px;
+  height: 78px;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 20px rgba(90, 50, 120, 0.2);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.peekaboo-target canvas {
+  display: block;
+  width: 62px;
+  height: 62px;
+}
+
+.peekaboo-target__badge {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  box-shadow: 0 4px 10px rgba(90, 50, 120, 0.2);
+}
+
+.peekaboo-target.is-found {
+  background: #eaffea;
+  animation: target-found 500ms ease;
+}
+
+.peekaboo-target.is-wrong {
+  animation: target-wrong 400ms ease;
+}
+
+@keyframes target-found {
+  0%,
+  100% {
+    transform: translateX(-50%) scale(1);
+  }
+  45% {
+    transform: translateX(-50%) scale(1.18);
+  }
+}
+
+@keyframes target-wrong {
+  0%,
+  100% {
+    transform: translateX(-50%) rotate(0);
+  }
+  25% {
+    transform: translateX(-50%) rotate(-7deg);
+  }
+  75% {
+    transform: translateX(-50%) rotate(7deg);
+  }
+}
+
 .wardrobe {
   position: absolute;
   left: 0;

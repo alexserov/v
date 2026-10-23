@@ -1,12 +1,12 @@
 import {
   ANIMAL_KINDS,
+  animalBodyColor,
   drawAnimalHead,
   type AnimalKind,
 } from '../../art/characters';
 import { CanvasGame } from '../../engine/CanvasGame';
 import { Particles } from '../../engine/particles';
 import { sound } from '../../engine/sound';
-import { createHud, type Hud } from '../../ui/hud';
 import type { GameDefinition } from '../../types';
 
 interface Spot {
@@ -17,6 +17,9 @@ interface Spot {
   tone: number;
   revealed: boolean;
   reveal: number;
+  peek: number;
+  peekTimer: number;
+  wavePhase: number;
   bob: number;
   sway: number;
   bounce: number;
@@ -36,12 +39,19 @@ const LAYOUT: ReadonlyArray<readonly [number, number]> = [
   [0.68, 0.66],
 ];
 
+const PEEK_DURATION = 1.25;
 const mod = (value: number, span: number) => ((value % span) + span) % span;
 
 class PeekabooGame extends CanvasGame {
   private spots: Spot[] = [];
   private particles = new Particles();
-  private hud: Hud | null = null;
+  private target: AnimalKind = 'bunny';
+
+  private targetCard: HTMLElement | null = null;
+  private targetCanvas: HTMLCanvasElement | null = null;
+  private targetBadge: HTMLElement | null = null;
+
+  private roundWon = false;
   private resetTimer: number | null = null;
   private time = 0;
 
@@ -49,13 +59,129 @@ class PeekabooGame extends CanvasGame {
     if (!this.host) {
       return;
     }
-    this.hud = createHud(this.host, { icon: '🐾', initial: 0 });
+    this.createTargetCard(this.host);
     this.newRound();
   }
 
   protected onDestroy(): void {
-    this.hud?.destroy();
-    this.hud = null;
+    this.targetCard?.remove();
+    this.targetCard = null;
+    this.targetCanvas = null;
+    this.targetBadge = null;
+  }
+
+  protected onResize(): void {
+    if (this.spots.length > 0) {
+      this.newRound();
+    }
+  }
+
+  private createTargetCard(host: HTMLElement): void {
+    const card = document.createElement('div');
+    card.className = 'peekaboo-target';
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+
+    const badge = document.createElement('span');
+    badge.className = 'peekaboo-target__badge';
+    badge.textContent = '🔍';
+
+    card.append(canvas, badge);
+    card.addEventListener('animationend', (event) => {
+      if (event.animationName === 'target-wrong') {
+        card.classList.remove('is-wrong');
+      }
+    });
+
+    host.append(card);
+    this.targetCard = card;
+    this.targetCanvas = canvas;
+    this.targetBadge = badge;
+  }
+
+  private newRound(): void {
+    this.target =
+      ANIMAL_KINDS[Math.floor(Math.random() * ANIMAL_KINDS.length)] ?? 'bunny';
+
+    const others = ANIMAL_KINDS.filter((kind) => kind !== this.target);
+    shuffle(others);
+
+    const targetIndex = Math.floor(Math.random() * LAYOUT.length);
+    const baseRadius = Math.min(this.width * 0.135, this.height * 0.075);
+    let otherIndex = 0;
+
+    this.spots = LAYOUT.map(([fx, fy], index) => {
+      let animal: AnimalKind;
+      if (index === targetIndex) {
+        animal = this.target;
+      } else {
+        animal = others[otherIndex % others.length] ?? 'bear';
+        otherIndex += 1;
+      }
+
+      return {
+        x: this.width * (fx + (Math.random() - 0.5) * 0.04),
+        y: this.height * (fy + (Math.random() - 0.5) * 0.03),
+        radius: baseRadius * (0.88 + Math.random() * 0.22),
+        animal,
+        tone: index % BUSH_PALETTES.length,
+        revealed: false,
+        reveal: 0,
+        peek: 0,
+        peekTimer: 0,
+        wavePhase: Math.random() * Math.PI * 2,
+        bob: Math.random() * Math.PI * 2,
+        sway: Math.random() * Math.PI * 2,
+        bounce: 0,
+      };
+    });
+
+    this.roundWon = false;
+    this.resetTimer = null;
+    this.updateTargetCard();
+    sound.chime(0);
+  }
+
+  private updateTargetCard(): void {
+    if (!this.targetCanvas) {
+      return;
+    }
+    const ctx = this.targetCanvas.getContext('2d');
+    if (!ctx) {
+      return;
+    }
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, 64, 64);
+    ctx.translate(32, 38);
+    drawAnimalHead(ctx, this.target, 20, {
+      expression: 'happy',
+      blush: true,
+    });
+
+    if (this.targetBadge) {
+      this.targetBadge.textContent = '🔍';
+    }
+    this.targetCard?.classList.remove('is-found');
+  }
+
+  private setTargetFound(found: boolean): void {
+    this.targetCard?.classList.toggle('is-found', found);
+    if (this.targetBadge) {
+      this.targetBadge.textContent = found ? '✅' : '🔍';
+    }
+  }
+
+  private flashWrong(): void {
+    const card = this.targetCard;
+    if (!card) {
+      return;
+    }
+    card.classList.remove('is-wrong');
+    void card.offsetWidth;
+    card.classList.add('is-wrong');
   }
 
   protected update(dt: number): void {
@@ -65,29 +191,33 @@ class PeekabooGame extends CanvasGame {
       spot.bob += dt * 2.2;
       spot.sway += dt * (0.7 + (spot.tone + 1) * 0.15);
       spot.bounce = Math.max(0, spot.bounce - dt * 3);
+
       if (spot.revealed && spot.reveal < 1) {
         spot.reveal = Math.min(1, spot.reveal + dt * 3.6);
+      }
+
+      if (spot.peekTimer > 0) {
+        spot.peekTimer = Math.max(0, spot.peekTimer - dt);
+        const elapsed = PEEK_DURATION - spot.peekTimer;
+        if (elapsed < 0.18) {
+          spot.peek = elapsed / 0.18;
+        } else if (elapsed < 0.95) {
+          spot.peek = 1;
+        } else {
+          spot.peek = Math.max(
+            0,
+            (PEEK_DURATION - elapsed) / (PEEK_DURATION - 0.95),
+          );
+        }
+        spot.wavePhase += dt * 14;
+      } else {
+        spot.peek = 0;
       }
     }
 
     this.particles.update(dt);
 
-    const allFound = this.spots.every((spot) => spot.revealed);
-    if (allFound && this.resetTimer === null) {
-      this.resetTimer = 1.7;
-      sound.sparkle();
-      this.particles.burst(this.width / 2, this.height * 0.45, {
-        count: 40,
-        colors: ['#ffe36e', '#ff9ecb', '#a78bfa', '#ffffff', '#8fe3c8'],
-        minSpeed: 80,
-        maxSpeed: 320,
-        life: 1,
-        size: 4,
-        gravity: 260,
-      });
-    }
-
-    if (this.resetTimer !== null) {
+    if (this.roundWon && this.resetTimer !== null) {
       this.resetTimer -= dt;
       if (this.resetTimer <= 0) {
         this.newRound();
@@ -107,6 +237,10 @@ class PeekabooGame extends CanvasGame {
   }
 
   protected onTap(x: number, y: number): void {
+    if (this.roundWon) {
+      return;
+    }
+
     for (const spot of this.spots) {
       const dx = x - spot.x;
       const dy = y - (spot.y - spot.radius * 0.3);
@@ -115,78 +249,70 @@ class PeekabooGame extends CanvasGame {
         continue;
       }
 
-      if (!spot.revealed) {
-        this.reveal(spot);
+      if (spot.animal === this.target) {
+        this.win(spot);
       } else {
-        spot.bounce = 1;
-        sound.chime(Math.floor(Math.random() * 5));
+        this.wrong(spot);
       }
       return;
     }
   }
 
-  private newRound(): void {
-    const animals = [...ANIMAL_KINDS];
-    for (let index = animals.length - 1; index > 0; index--) {
-      const swap = Math.floor(Math.random() * (index + 1));
-      [animals[index], animals[swap]] = [animals[swap], animals[index]];
-    }
-
-    const baseRadius = Math.min(this.width * 0.135, this.height * 0.075);
-
-    this.spots = LAYOUT.map(([fx, fy], index) => ({
-      x: this.width * (fx + (Math.random() - 0.5) * 0.04),
-      y: this.height * (fy + (Math.random() - 0.5) * 0.03),
-      radius: baseRadius * (0.88 + Math.random() * 0.22),
-      animal: animals[index % animals.length],
-      tone: index % BUSH_PALETTES.length,
-      revealed: false,
-      reveal: 0,
-      bob: Math.random() * Math.PI * 2,
-      sway: Math.random() * Math.PI * 2,
-      bounce: 0,
-    }));
-
-    this.resetTimer = null;
-    this.hud?.setValue(0);
-    sound.chime(0);
-  }
-
-  private reveal(spot: Spot): void {
+  private win(spot: Spot): void {
     spot.revealed = true;
     spot.reveal = 0;
     spot.bounce = 1;
+    spot.peek = 0;
+    spot.peekTimer = 0;
 
-    const found = this.spots.filter((item) => item.revealed).length;
-    this.hud?.setValue(found);
-    sound.pop(spot.radius / 46);
+    this.roundWon = true;
+    this.resetTimer = 1.8;
+    this.setTargetFound(true);
+    sound.sparkle();
+
     this.particles.burst(spot.x, spot.y - spot.radius, {
-      count: 14,
-      colors: ['#ffe36e', '#ffffff', '#8fe3c8', '#ffc2e8'],
+      count: 22,
+      colors: ['#ffe36e', '#ffffff', '#8fe3c8', '#ffc2e8', '#a78bfa'],
       minSpeed: 50,
-      maxSpeed: 190,
-      life: 0.7,
-      gravity: 240,
+      maxSpeed: 210,
+      life: 0.8,
+      gravity: 220,
     });
+    this.particles.hearts(spot.x, spot.y - spot.radius * 1.3, 10);
+  }
+
+  private wrong(spot: Spot): void {
+    spot.peekTimer = PEEK_DURATION;
+    spot.wavePhase = 0;
+    spot.bounce = 1;
+    sound.nope();
+    this.flashWrong();
   }
 
   private drawSpot(ctx: CanvasRenderingContext2D, spot: Spot): void {
     const r = spot.radius;
     const eased = 1 - Math.pow(1 - spot.reveal, 3);
     const bounceLift = Math.sin(spot.bounce * Math.PI) * r * 0.18;
+    const peekLift = spot.peek * r * 0.55;
     const bob = Math.sin(spot.bob) * r * 0.04;
     const sway = Math.sin(spot.sway) * r * 0.03;
 
-    const headY = spot.y - r * 0.75 - eased * r * 0.35 - bounceLift + bob;
+    const headY =
+      spot.y - r * 0.75 - eased * r * 0.35 - peekLift - bounceLift + bob;
     const headRadius = r * 0.55;
 
     ctx.save();
     ctx.translate(spot.x + sway, headY);
     drawAnimalHead(ctx, spot.animal, headRadius, {
-      expression: spot.revealed ? 'happy' : 'sleepy',
+      expression:
+        spot.peek > 0.1 ? 'wink' : spot.revealed ? 'happy' : 'sleepy',
       blush: true,
     });
     ctx.restore();
+
+    if (spot.peek > 0.05) {
+      this.drawPaw(ctx, spot, headY, r);
+    }
 
     const bushY = spot.y + eased * r * 0.55;
     drawBush(
@@ -197,6 +323,42 @@ class PeekabooGame extends CanvasGame {
       BUSH_PALETTES[spot.tone],
       spot.sway,
     );
+  }
+
+  private drawPaw(
+    ctx: CanvasRenderingContext2D,
+    spot: Spot,
+    headY: number,
+    r: number,
+  ): void {
+    const color = animalBodyColor(spot.animal);
+    const shoulderX = spot.x + r * 0.45;
+    const shoulderY = headY + r * 0.5;
+    const angle = -1.05 + Math.sin(spot.wavePhase) * 0.42;
+    const armLength = r * 0.62;
+    const pawX = shoulderX + Math.cos(angle) * armLength;
+    const pawY = shoulderY + Math.sin(angle) * armLength;
+
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, spot.peek * 1.4);
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(3, r * 0.16);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(shoulderX, shoulderY);
+    ctx.lineTo(pawX, pawY);
+    ctx.stroke();
+
+    ctx.fillStyle = color;
+    fillCircle(ctx, pawX, pawY, r * 0.17);
+
+    ctx.fillStyle = 'rgba(255, 140, 185, 0.7)';
+    fillCircle(ctx, pawX - r * 0.05, pawY - r * 0.05, r * 0.045);
+    fillCircle(ctx, pawX + r * 0.04, pawY - r * 0.06, r * 0.04);
+    fillCircle(ctx, pawX, pawY + r * 0.05, r * 0.045);
+
+    ctx.restore();
   }
 
   private drawBackground(ctx: CanvasRenderingContext2D): void {
@@ -273,6 +435,15 @@ class PeekabooGame extends CanvasGame {
       const y = groundY + height * (0.05 + (index % 3) * 0.03);
       drawFlower(ctx, x, y, Math.min(width, height) * 0.006, index % 2 === 0);
     }
+  }
+}
+
+function shuffle<T>(items: T[]): void {
+  for (let index = items.length - 1; index > 0; index--) {
+    const swap = Math.floor(Math.random() * (index + 1));
+    const temp = items[index];
+    items[index] = items[swap] as T;
+    items[swap] = temp as T;
   }
 }
 

@@ -120,6 +120,17 @@ class SoundManager {
     this.tone(2093, 0.2, { type: 'sine', volume: 0.13, delay: 0.12 });
   }
 
+  /** Soft "not this one" sound — never harsh or scolding. */
+  nope(): void {
+    this.tone(392, 0.1, { type: 'sine', volume: 0.18, slideTo: 330 });
+    this.tone(330, 0.14, {
+      type: 'sine',
+      volume: 0.16,
+      slideTo: 262,
+      delay: 0.09,
+    });
+  }
+
   private readMuted(): boolean {
     try {
       return localStorage.getItem(STORAGE_KEY) === '1';
