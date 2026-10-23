@@ -72,6 +72,24 @@ public/icons/              # готовые иконки 192/512/maskable/apple
   даёт мягкий подскок и искры, игра продолжается.
 - Поддержка клавиатуры (Пробел / ↑) для проверки на компьютере.
 
+## Деплой на GitHub Pages
+
+- Репозиторий: `git@github.com:alexserov/v.git`
+- Сайт: https://alexserov.github.io/v/
+
+Деплой автоматический: workflow `.github/workflows/deploy.yml` собирает проект
+и публикует `dist/` при каждом пуше в `main`.
+
+Первичная настройка (один раз):
+
+1. Открыть **Settings → Pages → Build and deployment**.
+2. В **Source** выбрать **GitHub Actions**.
+3. Запушить в `main` (или вручную: **Actions → Deploy to GitHub Pages →
+   Run workflow**).
+
+За счёт `base: './'` и hash-роутинга приложение корректно работает из
+подпапки `/v/`.
+
 ## Установка на телефон
 
 PWA устанавливается с **HTTPS** (или `localhost`). Обычный `http://<ip-адрес>`
