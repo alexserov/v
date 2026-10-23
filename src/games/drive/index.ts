@@ -11,6 +11,15 @@ interface RoadObject {
   x: number;
   spin: number;
   resolved: boolean;
+  remove?: boolean;
+}
+
+interface RainDrop {
+  x: number;
+  y: number;
+  speed: number;
+  length: number;
+  alpha: number;
 }
 
 const LANE_COUNT = 3;
@@ -18,6 +27,50 @@ const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 const mod = (value: number, span: number) => ((value % span) + span) % span;
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+const WEATHER_TARGETS = [
+  { clouds: 0.18, rain: 0 },
+  { clouds: 0.9, rain: 0 },
+  { clouds: 1, rain: 1 },
+] as const;
+
+const SKY_DAY = [
+  [191, 230, 255],
+  [255, 226, 241],
+  [255, 240, 217],
+] as const;
+const SKY_SUNSET = [
+  [111, 125, 205],
+  [255, 150, 170],
+  [255, 196, 110],
+] as const;
+const SKY_NIGHT = [
+  [16, 22, 52],
+  [30, 31, 72],
+  [52, 42, 88],
+] as const;
+const SUN_DAY = [255, 227, 110] as const;
+const SUN_SET = [255, 159, 67] as const;
+const CLOUD_WHITE = [255, 255, 255] as const;
+const CLOUD_GRAY = [198, 208, 222] as const;
+
+function mixColor(
+  from: readonly [number, number, number],
+  to: readonly [number, number, number],
+  amount: number,
+): string {
+  const t = clamp(amount, 0, 1);
+  return `rgb(${Math.round(from[0] + (to[0] - from[0]) * t)}, ${Math.round(
+    from[1] + (to[1] - from[1]) * t,
+  )}, ${Math.round(from[2] + (to[2] - from[2]) * t)})`;
+}
+
+function skyColor(night: number, index: 0 | 1 | 2): string {
+  if (night < 0.5) {
+    return mixColor(SKY_DAY[index], SKY_SUNSET[index], night / 0.5);
+  }
+  return mixColor(SKY_SUNSET[index], SKY_NIGHT[index], (night - 0.5) / 0.5);
+}
 
 class DriveGame extends CanvasGame {
   private hud: Hud | null = null;
@@ -38,6 +91,21 @@ class DriveGame extends CanvasGame {
   private carW = 78;
   private carH = 43;
   private carBounce = 0;
+
+  private dayPhase = 0;
+  private readonly skyStars = Array.from({ length: 26 }, () => ({
+    x: Math.random(),
+    y: Math.random(),
+    size: 0.6 + Math.random() * 1.4,
+    phase: Math.random() * Math.PI * 2,
+  }));
+
+  private weatherIndex = 0;
+  private weatherTimer = 18;
+  private cloudsAmount = 0.18;
+  private rainAmount = 0;
+  private rainbow = 0;
+  private rainDrops: RainDrop[] = [];
 
   private roadTop = 0;
   private roadBottom = 0;
@@ -72,6 +140,7 @@ class DriveGame extends CanvasGame {
     this.objects = [];
     this.starTimer = 0.9;
     this.puddleTimer = 1.9;
+    this.rainDrops = [];
   }
 
   private laneCenter(lane: number): number {
@@ -85,8 +154,33 @@ class DriveGame extends CanvasGame {
     const speed =
       Math.max(170, this.width * 0.45) *
       (1 + Math.min(this.time / 120, 0.5));
-    this.scrollX = mod(this.scrollX + speed * dt, 600);
+    this.scrollX += speed * dt;
+    this.dayPhase = (this.dayPhase + dt / 70) % 1;
     this.carY = lerp(this.carY, this.targetY, Math.min(1, dt * 12));
+
+    this.weatherTimer -= dt;
+    if (this.weatherTimer <= 0) {
+      this.weatherIndex = (this.weatherIndex + 1) % WEATHER_TARGETS.length;
+      this.weatherTimer = 20;
+      if (this.weatherIndex === 0) {
+        this.rainbow = 1;
+      }
+    }
+
+    const weather = WEATHER_TARGETS[this.weatherIndex] ?? WEATHER_TARGETS[0];
+    this.cloudsAmount = lerp(
+      this.cloudsAmount,
+      weather.clouds,
+      Math.min(1, dt * 0.5),
+    );
+    this.rainAmount = lerp(
+      this.rainAmount,
+      weather.rain,
+      Math.min(1, dt * 0.6),
+    );
+    if (this.rainbow > 0) {
+      this.rainbow = Math.max(0, this.rainbow - dt / 8);
+    }
 
     this.starTimer -= dt;
     if (this.starTimer <= 0) {
@@ -97,7 +191,28 @@ class DriveGame extends CanvasGame {
     this.puddleTimer -= dt;
     if (this.puddleTimer <= 0) {
       this.spawn('puddle');
-      this.puddleTimer = 2.2 + Math.random() * 1.6;
+      this.puddleTimer =
+        (2.2 + Math.random() * 1.6) * (1.15 - this.rainAmount * 0.45);
+    }
+
+    if (this.rainAmount > 0.02) {
+      if (this.rainDrops.length === 0) {
+        this.rainDrops = Array.from({ length: 64 }, () =>
+          this.makeRainDrop(true),
+        );
+      }
+      for (const drop of this.rainDrops) {
+        drop.y += drop.speed * dt;
+        drop.x -= 42 * dt;
+        if (drop.y > this.height + 24 || drop.x < -30) {
+          const fresh = this.makeRainDrop(false);
+          drop.x = fresh.x;
+          drop.y = fresh.y;
+          drop.speed = fresh.speed;
+          drop.length = fresh.length;
+          drop.alpha = fresh.alpha;
+        }
+      }
     }
 
     const reach = this.carW * 0.45;
@@ -114,7 +229,9 @@ class DriveGame extends CanvasGame {
       }
     }
 
-    this.objects = this.objects.filter((object) => object.x > -60);
+    this.objects = this.objects.filter(
+      (object) => !object.remove && object.x > -60,
+    );
     this.particles.update(dt);
   }
 
@@ -127,13 +244,22 @@ class DriveGame extends CanvasGame {
         this.drawPuddle(ctx, object);
       }
     }
+
+    this.drawCar(ctx);
+
+    this.drawWeatherTint(ctx);
+    this.drawNightOverlay(ctx);
+    this.drawRainbow(ctx);
+    this.drawSkyNight(ctx);
+    this.drawHeadlights(ctx);
+
     for (const object of this.objects) {
-      if (object.kind === 'star') {
+      if (object.kind === 'star' && !object.remove) {
         this.drawStar(ctx, object);
       }
     }
 
-    this.drawCar(ctx);
+    this.drawRain(ctx);
     this.particles.draw(ctx);
   }
 
@@ -163,6 +289,7 @@ class DriveGame extends CanvasGame {
     const y = this.laneCenter(object.lane);
 
     if (object.kind === 'star') {
+      object.remove = true;
       this.collected += 1;
       this.hud?.setValue(this.collected);
       sound.collect();
@@ -191,54 +318,379 @@ class DriveGame extends CanvasGame {
     });
   }
 
+  private nightAmount(): number {
+    return 0.5 - 0.5 * Math.cos(this.dayPhase * Math.PI * 2);
+  }
+
+  private sunHeight(): number {
+    return 0.5 + 0.5 * Math.cos(this.dayPhase * Math.PI * 2);
+  }
+
+  private makeRainDrop(randomY: boolean): RainDrop {
+    return {
+      x: Math.random() * (this.width + 50),
+      y: randomY
+        ? Math.random() * this.height
+        : -20 - Math.random() * this.height * 0.3,
+      speed: 480 + Math.random() * 280,
+      length: 10 + Math.random() * 12,
+      alpha: 0.22 + Math.random() * 0.33,
+    };
+  }
+
+  private drawCloud(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    size: number,
+    color: string,
+    alpha: number,
+  ): void {
+    if (alpha < 0.01) {
+      return;
+    }
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    for (const [dx, dy, scale] of [
+      [0, 0, 1],
+      [0.85, 0.1, 0.78],
+      [-0.85, 0.13, 0.68],
+    ] as const) {
+      ctx.beginPath();
+      ctx.arc(x + size * dx, y + size * dy, size * scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  private drawWeatherTint(ctx: CanvasRenderingContext2D): void {
+    const amount = this.cloudsAmount * 0.1 + this.rainAmount * 0.12;
+    if (amount < 0.01) {
+      return;
+    }
+    ctx.fillStyle = `rgba(105, 125, 150, ${amount})`;
+    ctx.fillRect(0, 0, this.width, this.height);
+  }
+
+  private drawNightOverlay(ctx: CanvasRenderingContext2D): void {
+    const night = this.nightAmount();
+    if (night < 0.02) {
+      return;
+    }
+    const tint = ctx.createLinearGradient(0, 0, 0, this.height);
+    tint.addColorStop(0, `rgba(12, 16, 42, ${night * 0.16})`);
+    tint.addColorStop(0.55, `rgba(12, 16, 42, ${night * 0.3})`);
+    tint.addColorStop(1, `rgba(12, 16, 42, ${night * 0.46})`);
+    ctx.fillStyle = tint;
+    ctx.fillRect(0, 0, this.width, this.height);
+  }
+
+  private drawRainbow(ctx: CanvasRenderingContext2D): void {
+    if (this.rainbow < 0.02) {
+      return;
+    }
+    const night = this.nightAmount();
+    if (night > 0.55) {
+      return;
+    }
+
+    const centerX = this.width / 2;
+    const centerY = this.roadTop + this.height * 0.04;
+    const baseRadius = this.width * 0.42;
+    const colors = [
+      '#ff8f8f',
+      '#ffc46e',
+      '#fff4a8',
+      '#a8e6a1',
+      '#9fd3ff',
+      '#c3a6ff',
+    ];
+    const lineWidth = Math.max(4, this.height * 0.008);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, this.width, this.roadTop);
+    ctx.clip();
+    ctx.globalAlpha = this.rainbow * 0.32 * (1 - night * 0.5);
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = 'round';
+    colors.forEach((color, index) => {
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      ctx.arc(
+        centerX,
+        centerY,
+        baseRadius - index * lineWidth * 1.2,
+        Math.PI,
+        Math.PI * 2,
+      );
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  private drawSkyNight(ctx: CanvasRenderingContext2D): void {
+    const night = this.nightAmount();
+    if (night < 0.02) {
+      return;
+    }
+
+    const width = this.width;
+    const height = this.height;
+    const weatherClear = clamp(1 - this.cloudsAmount * 0.85, 0, 1);
+
+    for (const star of this.skyStars) {
+      const twinkle = 0.55 + 0.45 * Math.sin(this.time * 2 + star.phase);
+      ctx.fillStyle = `rgba(255, 255, 235, ${
+        night * twinkle * 0.9 * weatherClear
+      })`;
+      ctx.beginPath();
+      ctx.arc(
+        star.x * width,
+        this.roadTop * (0.06 + star.y * 0.72),
+        star.size,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+
+    const moonAlpha =
+      clamp(night * 1.15 - 0.1, 0, 1) *
+      clamp(
+        1 - this.cloudsAmount * 0.55 - this.rainAmount * 0.15,
+        0,
+        1,
+      );
+    if (moonAlpha < 0.02) {
+      return;
+    }
+
+    const moonHeight = 1 - this.sunHeight();
+    const mx = width * 0.22;
+    const my = lerp(
+      this.roadTop - height * 0.02,
+      height * 0.1,
+      moonHeight,
+    );
+    const mr = Math.min(width, height) * 0.05;
+
+    ctx.save();
+    ctx.globalAlpha = moonAlpha;
+
+    const glow = ctx.createRadialGradient(
+      mx,
+      my,
+      mr * 0.5,
+      mx,
+      my,
+      mr * 2.6,
+    );
+    glow.addColorStop(0, 'rgba(255, 250, 210, 0.5)');
+    glow.addColorStop(1, 'rgba(255, 250, 210, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(mx, my, mr * 2.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#fff8dc';
+    ctx.beginPath();
+    ctx.arc(mx, my, mr, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(230, 220, 180, 0.55)';
+    for (const [dx, dy, r] of [
+      [-0.35, -0.2, 0.16],
+      [0.3, 0.15, 0.12],
+      [0.05, -0.42, 0.09],
+      [-0.2, 0.38, 0.1],
+    ] as const) {
+      ctx.beginPath();
+      ctx.arc(mx + dx * mr, my + dy * mr, r * mr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.strokeStyle = 'rgba(120, 105, 80, 0.65)';
+    ctx.lineWidth = Math.max(1.2, mr * 0.07);
+    ctx.lineCap = 'round';
+    for (const sx of [-0.3, 0.3]) {
+      ctx.beginPath();
+      ctx.arc(
+        mx + sx * mr,
+        my - 0.02 * mr,
+        mr * 0.12,
+        Math.PI * 1.15,
+        Math.PI * 1.85,
+      );
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(mx, my + 0.22 * mr, mr * 0.14, Math.PI * 0.15, Math.PI * 0.85);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawHeadlights(ctx: CanvasRenderingContext2D): void {
+    const night = this.nightAmount();
+    if (night < 0.08) {
+      return;
+    }
+
+    const w = this.carW;
+    const h = this.carH;
+    const bob =
+      Math.sin(this.time * 9) * 1.3 +
+      Math.sin(this.carBounce * Math.PI) * h * 0.08;
+    const frontX = this.carX + w * 0.5;
+    const frontY = this.carY + bob + h * 0.14;
+    const endX = Math.min(this.width + 60, frontX + w * 4.6);
+
+    ctx.save();
+    ctx.globalAlpha = night;
+    ctx.globalCompositeOperation = 'lighter';
+
+    const beam = ctx.createLinearGradient(frontX, frontY, endX, frontY);
+    beam.addColorStop(0, 'rgba(255, 246, 180, 0.32)');
+    beam.addColorStop(0.55, 'rgba(255, 240, 150, 0.12)');
+    beam.addColorStop(1, 'rgba(255, 240, 150, 0)');
+    ctx.fillStyle = beam;
+    ctx.beginPath();
+    ctx.moveTo(frontX, frontY - h * 0.08);
+    ctx.lineTo(endX, frontY - h * 1.05);
+    ctx.lineTo(endX, frontY + h * 1.05);
+    ctx.lineTo(frontX, frontY + h * 0.22);
+    ctx.closePath();
+    ctx.fill();
+
+    const glow = ctx.createRadialGradient(
+      frontX,
+      frontY,
+      1,
+      frontX,
+      frontY,
+      h * 1.1,
+    );
+    glow.addColorStop(0, 'rgba(255, 250, 200, 0.75)');
+    glow.addColorStop(1, 'rgba(255, 250, 200, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(frontX, frontY, h * 1.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    const rearX = this.carX - w * 0.48;
+    const rearY = this.carY + bob + h * 0.2;
+    const red = ctx.createRadialGradient(
+      rearX,
+      rearY,
+      1,
+      rearX,
+      rearY,
+      h * 0.75,
+    );
+    red.addColorStop(0, 'rgba(255, 90, 90, 0.45)');
+    red.addColorStop(1, 'rgba(255, 90, 90, 0)');
+    ctx.fillStyle = red;
+    ctx.beginPath();
+    ctx.arc(rearX, rearY, h * 0.75, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  private drawRain(ctx: CanvasRenderingContext2D): void {
+    if (this.rainAmount < 0.03 || this.rainDrops.length === 0) {
+      return;
+    }
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(190, 220, 255, 0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    for (const drop of this.rainDrops) {
+      ctx.globalAlpha = this.rainAmount * drop.alpha;
+      ctx.beginPath();
+      ctx.moveTo(drop.x, drop.y);
+      ctx.lineTo(drop.x - drop.length * 0.18, drop.y + drop.length);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   private drawBackground(ctx: CanvasRenderingContext2D): void {
     const width = this.width;
     const height = this.height;
 
+    const night = this.nightAmount();
     const sky = ctx.createLinearGradient(0, 0, 0, this.roadTop);
-    sky.addColorStop(0, '#bfe6ff');
-    sky.addColorStop(0.6, '#ffe2f1');
-    sky.addColorStop(1, '#fff0d9');
+    sky.addColorStop(0, skyColor(night, 0));
+    sky.addColorStop(0.62, skyColor(night, 1));
+    sky.addColorStop(1, skyColor(night, 2));
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, width, this.roadTop);
 
-    const sunX = width * 0.8;
-    const sunY = height * 0.12;
-    const sunR = Math.min(width, height) * 0.065;
-    const glow = ctx.createRadialGradient(
-      sunX,
-      sunY,
-      sunR * 0.4,
-      sunX,
-      sunY,
-      sunR * 2,
+    const sunHeight = this.sunHeight();
+    const sunX = width * 0.78;
+    const sunY = lerp(
+      this.roadTop - height * 0.02,
+      height * 0.12,
+      sunHeight,
     );
-    glow.addColorStop(0, 'rgba(255, 235, 130, 0.55)');
-    glow.addColorStop(1, 'rgba(255, 235, 130, 0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(sunX, sunY, sunR * 2, 0, Math.PI * 2);
-    ctx.fill();
+    const sunAlpha =
+      clamp(1 - night * 1.15, 0, 1) *
+      clamp(1 - this.cloudsAmount * 0.55 - this.rainAmount * 0.25, 0, 1);
 
-    ctx.fillStyle = '#ffe36e';
-    ctx.beginPath();
-    ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
-    ctx.fill();
+    if (sunAlpha > 0.01) {
+      const sunR = Math.min(width, height) * 0.065;
+      ctx.save();
+      ctx.globalAlpha = sunAlpha;
 
+      const glow = ctx.createRadialGradient(
+        sunX,
+        sunY,
+        sunR * 0.4,
+        sunX,
+        sunY,
+        sunR * 2.2,
+      );
+      glow.addColorStop(0, 'rgba(255, 220, 130, 0.6)');
+      glow.addColorStop(1, 'rgba(255, 220, 130, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, sunR * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = mixColor(SUN_DAY, SUN_SET, night);
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    const cloudColor = mixColor(
+      CLOUD_WHITE,
+      CLOUD_GRAY,
+      this.cloudsAmount,
+    );
+    const baseCloudAlpha = 0.78 * (1 - night * 0.55);
     for (let index = 0; index < 4; index++) {
       const span = width + 280;
       const x = mod(index * 220 + 40 - this.time * 8, span) - 140;
       const y = height * 0.08 + (index % 2) * height * 0.05;
       const size = Math.min(width, height) * 0.034;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
-      for (const [dx, dy, scale] of [
-        [0, 0, 1],
-        [0.8, 0.1, 0.75],
-        [-0.8, 0.12, 0.65],
-      ] as const) {
-        ctx.beginPath();
-        ctx.arc(x + size * dx, y + size * dy, size * scale, 0, Math.PI * 2);
-        ctx.fill();
+      this.drawCloud(ctx, x, y, size, cloudColor, baseCloudAlpha);
+    }
+
+    const extraCloudAlpha =
+      this.cloudsAmount * 0.82 * (1 - night * 0.45);
+    if (extraCloudAlpha > 0.01) {
+      for (let index = 0; index < 4; index++) {
+        const span = width + 240;
+        const x = mod(index * 190 + 90 - this.time * 5, span) - 120;
+        const y = height * (0.02 + (index % 3) * 0.045);
+        const size =
+          Math.min(width, height) * (0.055 + (index % 2) * 0.012);
+        this.drawCloud(ctx, x, y, size, cloudColor, extraCloudAlpha);
       }
     }
 
@@ -327,6 +779,11 @@ class DriveGame extends CanvasGame {
     ctx.fillStyle = road;
     ctx.fillRect(0, this.roadTop, width, this.roadBottom - this.roadTop);
 
+    if (this.rainAmount > 0.01) {
+      ctx.fillStyle = `rgba(180, 210, 240, ${this.rainAmount * 0.08})`;
+      ctx.fillRect(0, this.roadTop, width, this.roadBottom - this.roadTop);
+    }
+
     ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
     ctx.fillRect(0, this.roadTop, width, 3);
     ctx.fillRect(0, this.roadBottom - 3, width, 3);
@@ -334,7 +791,7 @@ class DriveGame extends CanvasGame {
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
     ctx.lineWidth = 3;
     ctx.setLineDash([34, 26]);
-    ctx.lineDashOffset = this.scrollX;
+    ctx.lineDashOffset = mod(this.scrollX, 60);
 
     for (let lane = 1; lane < LANE_COUNT; lane++) {
       const y = this.roadTop + this.laneHeight * lane;
