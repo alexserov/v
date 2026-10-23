@@ -5,46 +5,44 @@ import { sound } from '../../engine/sound';
 import { createHud, type Hud } from '../../ui/hud';
 import type { GameDefinition } from '../../types';
 
-interface Star {
-  x: number;
-  y: number;
-  size: number;
-  phase: number;
+interface RoadObject {
+  kind: 'star' | 'puddle';
+  lane: number;
+  z: number;
+  spin: number;
+  resolved: boolean;
 }
 
-interface Puddle {
-  x: number;
-  y: number;
-  rx: number;
-  ry: number;
-  hit: boolean;
-}
-
+const CAR_Z = 0.78;
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 const mod = (value: number, span: number) => ((value % span) + span) % span;
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 class DriveGame extends CanvasGame {
-  private particles = new Particles();
   private hud: Hud | null = null;
+  private particles = new Particles();
+  private objects: RoadObject[] = [];
 
-  private stars: Star[] = [];
-  private puddles: Puddle[] = [];
   private collected = 0;
-
   private time = 0;
-  private worldX = 0;
-  private speed = 200;
-
-  private carX = 0;
-  private targetX = 0;
-  private carY = 0;
-  private carW = 70;
-  private carH = 38;
-
+  private scroll = 0;
   private starTimer = 0.7;
-  private puddleTimer = 1.6;
+  private puddleTimer = 1.8;
+
+  private carLane = 0;
+  private targetLane = 0;
+  private carBounce = 0;
+
+  private side = 0;
+  private horizonY = 0;
+  private centerX = 0;
+  private topHalf = 0;
+  private bottomHalf = 0;
+  private carW = 80;
+  private carH = 56;
+  private carX = 0;
+  private carY = 0;
 
   protected onMount(): void {
     if (!this.host) {
@@ -59,90 +57,87 @@ class DriveGame extends CanvasGame {
   }
 
   protected onResize(): void {
-    const side = Math.min(this.width, this.height);
-    const roadTop = this.height * 0.72;
-    const roadBottom = this.height * 0.93;
+    this.side = Math.min(this.width, this.height);
+    this.horizonY = this.height * 0.26;
+    this.centerX = this.width / 2;
+    this.topHalf = this.width * 0.08;
+    this.bottomHalf = this.width * 0.42;
 
-    this.carW = side * 0.2;
-    this.carH = this.carW * 0.55;
-    this.carY = roadTop + (roadBottom - roadTop) * 0.62;
-    this.carX = clamp(this.carX || this.width / 2, this.carW * 0.5 + 8, this.width - this.carW * 0.5 - 8);
-    this.targetX = this.carX;
+    this.carW = Math.min(this.width * 0.24, this.height * 0.12);
+    this.carH = this.carW * 0.7;
 
-    this.stars = [];
-    this.puddles = [];
+    const car = this.project(CAR_Z, 0);
+    this.carY = car.y;
+
+    const maxLane = this.maxLane();
+    this.carLane = clamp(this.carLane, -maxLane, maxLane);
+    this.targetLane = clamp(this.targetLane, -maxLane, maxLane);
+    this.carX = this.centerX + this.carLane * car.half;
+
+    this.objects = [];
+    this.starTimer = 0.7;
+    this.puddleTimer = 1.8;
+  }
+
+  private project(z: number, lane: number) {
+    const t = clamp(z, 0, 1.1);
+    const half = this.topHalf + (this.bottomHalf - this.topHalf) * t;
+    return {
+      x: this.centerX + lane * half,
+      y: this.horizonY + (this.height - this.horizonY) * t,
+      half,
+      scale: 0.35 + 0.65 * t,
+    };
+  }
+
+  private maxLane(): number {
+    const half = this.project(CAR_Z, 0).half;
+    return Math.max(
+      0.2,
+      1 - (this.carW * 0.5 + this.side * 0.025) / Math.max(1, half),
+    );
   }
 
   protected update(dt: number): void {
     this.time += dt;
-    this.speed =
-      Math.max(200, this.width * 0.5) *
-      (1 + Math.min(this.time / 120, 0.45));
-    this.worldX += this.speed * dt;
+    this.carBounce = Math.max(0, this.carBounce - dt * 3);
 
-    this.carX = lerp(this.carX, this.targetX, Math.min(1, dt * 7));
+    const zSpeed = 0.34 * (1 + Math.min(this.time / 120, 0.5));
+    this.scroll = mod(this.scroll + zSpeed * dt, 1);
+
+    const maxLane = this.maxLane();
+    this.targetLane = clamp(this.targetLane, -maxLane, maxLane);
+    this.carLane = lerp(this.carLane, this.targetLane, Math.min(1, dt * 8));
+
+    const car = this.project(CAR_Z, this.carLane);
+    this.carX = car.x;
+    this.carY = car.y;
 
     this.starTimer -= dt;
     if (this.starTimer <= 0) {
-      this.spawnStars();
-      this.starTimer = 1.1 + Math.random() * 1.1;
+      this.spawn('star');
+      this.starTimer = 0.95 + Math.random() * 0.75;
     }
 
     this.puddleTimer -= dt;
     if (this.puddleTimer <= 0) {
-      this.spawnPuddle();
-      this.puddleTimer = 2 + Math.random() * 1.6;
+      this.spawn('puddle');
+      this.puddleTimer = 2.2 + Math.random() * 1.6;
     }
 
-    for (const star of this.stars) {
-      star.x -= this.speed * dt;
-      star.phase += dt * 4;
-    }
-    for (const puddle of this.puddles) {
-      puddle.x -= this.speed * dt;
-    }
+    for (const object of this.objects) {
+      object.z += zSpeed * dt;
+      object.spin += dt * 3;
 
-    const carCenterX = this.carX;
-    const carCenterY = this.carY - this.carH * 0.5;
-    const carReach = this.carW * 0.6;
-
-    this.stars = this.stars.filter((star) => {
-      if (star.x + star.size < -20) {
-        return false;
-      }
-      const dx = star.x - carCenterX;
-      const dy = star.y - carCenterY;
-      const reach = carReach + star.size;
-      if (dx * dx + dy * dy <= reach * reach) {
-        this.collectStar(star);
-        return false;
-      }
-      return true;
-    });
-
-    for (const puddle of this.puddles) {
-      if (puddle.hit) {
-        continue;
-      }
-      const dx = Math.abs(puddle.x - carCenterX);
-      const dy = Math.abs(puddle.y - this.carY);
-      if (dx < puddle.rx + carReach && dy < puddle.ry + this.carH * 0.3) {
-        puddle.hit = true;
-        sound.splash();
-        this.particles.burst(puddle.x, puddle.y, {
-          count: 14,
-          colors: ['#cdeaff', '#ffffff', '#9fd3ff'],
-          minSpeed: 50,
-          maxSpeed: 180,
-          life: 0.5,
-          gravity: 500,
-          size: 3,
-        });
+      if (!object.resolved && object.z >= CAR_Z) {
+        object.resolved = true;
+        if (Math.abs(object.lane - this.carLane) < 0.34) {
+          this.hitObject(object);
+        }
       }
     }
 
-    this.puddles = this.puddles.filter((puddle) => puddle.x + puddle.rx > -30);
-
+    this.objects = this.objects.filter((object) => object.z < 1.15);
     this.particles.update(dt);
   }
 
@@ -150,59 +145,78 @@ class DriveGame extends CanvasGame {
     this.drawBackground(ctx);
     this.drawRoad(ctx);
 
-    for (const puddle of this.puddles) {
-      this.drawPuddle(ctx, puddle);
-    }
-    for (const star of this.stars) {
-      this.drawStar(ctx, star);
+    const sorted = [...this.objects].sort((a, b) => a.z - b.z);
+    for (const object of sorted) {
+      if (object.z < CAR_Z) {
+        this.drawObject(ctx, object);
+      }
     }
 
     this.drawCar(ctx);
+
+    for (const object of sorted) {
+      if (object.z >= CAR_Z) {
+        this.drawObject(ctx, object);
+      }
+    }
+
     this.particles.draw(ctx);
   }
 
-  protected onTap(x: number): void {
-    const margin = this.carW * 0.5 + 8;
-    this.targetX = clamp(x, margin, this.width - margin);
+  protected onTap(x: number, y: number): void {
+    const t = clamp(
+      (y - this.horizonY) / Math.max(1, this.height - this.horizonY),
+      0,
+      1,
+    );
+    const half = this.topHalf + (this.bottomHalf - this.topHalf) * t;
+    const lane = (x - this.centerX) / Math.max(1, half);
+    const maxLane = this.maxLane();
+    this.targetLane = clamp(lane, -maxLane, maxLane);
   }
 
-  private spawnStars(): void {
-    const count = Math.random() < 0.35 ? 3 : 1;
-    const baseY = this.carY - this.carH * 0.5 + (Math.random() - 0.5) * this.carH * 0.7;
+  private spawn(kind: 'star' | 'puddle'): void {
+    const maxLane = Math.max(0.25, this.maxLane() * 0.9);
+    const lane = (Math.random() * 2 - 1) * maxLane;
 
-    for (let index = 0; index < count; index++) {
-      this.stars.push({
-        x: this.width + 30 + index * this.carW * 0.6,
-        y: baseY + (Math.random() - 0.5) * this.carH * 0.35,
-        size: Math.min(this.width, this.height) * 0.028,
-        phase: Math.random() * Math.PI * 2,
-      });
-    }
-  }
-
-  private spawnPuddle(): void {
-    const rx = this.carW * (0.22 + Math.random() * 0.16);
-    this.puddles.push({
-      x: this.width + rx + 10,
-      y: this.carY + this.carH * 0.1,
-      rx,
-      ry: this.carH * 0.11,
-      hit: false,
+    this.objects.push({
+      kind,
+      lane,
+      z: 0,
+      spin: Math.random() * Math.PI * 2,
+      resolved: false,
     });
   }
 
-  private collectStar(star: Star): void {
-    this.collected += 1;
-    this.hud?.setValue(this.collected);
-    sound.collect();
-    this.particles.burst(star.x, star.y, {
-      count: 10,
-      colors: ['#ffe36e', '#fff4a8', '#ffffff', '#ffd93b'],
-      minSpeed: 40,
-      maxSpeed: 170,
-      life: 0.55,
-      gravity: 120,
-      size: 3.5,
+  private hitObject(object: RoadObject): void {
+    const point = this.project(object.z, object.lane);
+
+    if (object.kind === 'star') {
+      this.collected += 1;
+      this.hud?.setValue(this.collected);
+      sound.collect();
+      this.particles.burst(point.x, point.y, {
+        count: 11,
+        colors: ['#ffe36e', '#fff4a8', '#ffffff', '#ffd93b'],
+        minSpeed: 40,
+        maxSpeed: 180,
+        life: 0.55,
+        gravity: 120,
+        size: 3.5,
+      });
+      return;
+    }
+
+    this.carBounce = 1;
+    sound.splash();
+    this.particles.burst(point.x, point.y, {
+      count: 14,
+      colors: ['#cdeaff', '#ffffff', '#9fd3ff'],
+      minSpeed: 50,
+      maxSpeed: 190,
+      life: 0.5,
+      gravity: 420,
+      size: 3,
     });
   }
 
@@ -210,16 +224,16 @@ class DriveGame extends CanvasGame {
     const width = this.width;
     const height = this.height;
 
-    const sky = ctx.createLinearGradient(0, 0, 0, height * 0.72);
+    const sky = ctx.createLinearGradient(0, 0, 0, this.horizonY);
     sky.addColorStop(0, '#bfe6ff');
-    sky.addColorStop(0.55, '#ffe2f1');
-    sky.addColorStop(1, '#fff2de');
+    sky.addColorStop(0.7, '#ffe2f1');
+    sky.addColorStop(1, '#fff0d9');
     ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, width, height * 0.72);
+    ctx.fillRect(0, 0, width, this.horizonY + 2);
 
     const sunX = width * 0.8;
-    const sunY = height * 0.13;
-    const sunR = Math.min(width, height) * 0.07;
+    const sunY = height * 0.11;
+    const sunR = this.side * 0.065;
     const glow = ctx.createRadialGradient(
       sunX,
       sunY,
@@ -228,27 +242,28 @@ class DriveGame extends CanvasGame {
       sunY,
       sunR * 2,
     );
-    glow.addColorStop(0, 'rgba(255, 235, 130, 0.55)');
+    glow.addColorStop(0, 'rgba(255, 235, 130, 0.6)');
     glow.addColorStop(1, 'rgba(255, 235, 130, 0)');
     ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.arc(sunX, sunY, sunR * 2, 0, Math.PI * 2);
     ctx.fill();
+
     ctx.fillStyle = '#ffe36e';
     ctx.beginPath();
     ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
     ctx.fill();
 
-    for (let index = 0; index < 4; index++) {
-      const span = width + 300;
-      const x = mod(index * 230 + 40 - this.worldX * 0.12, span) - 150;
-      const y = height * 0.1 + (index % 2) * height * 0.07;
-      const size = Math.min(width, height) * 0.04;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    for (let index = 0; index < 3; index++) {
+      const span = width + 260;
+      const x = mod(index * 220 + 40 + this.time * 5, span) - 130;
+      const y = height * 0.07 + (index % 2) * height * 0.05;
+      const size = this.side * 0.032;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
       for (const [dx, dy, scale] of [
         [0, 0, 1],
-        [0.85, 0.1, 0.78],
-        [-0.85, 0.13, 0.68],
+        [0.8, 0.1, 0.75],
+        [-0.8, 0.12, 0.65],
       ] as const) {
         ctx.beginPath();
         ctx.arc(x + size * dx, y + size * dy, size * scale, 0, Math.PI * 2);
@@ -256,121 +271,146 @@ class DriveGame extends CanvasGame {
       }
     }
 
-    const hillY = height * 0.64;
-    this.drawHills(ctx, 0.22, hillY, height * 0.05, '#c6ecc2');
-    this.drawHills(ctx, 0.42, hillY + height * 0.03, height * 0.04, '#a9e0a5');
-
-    const grass = ctx.createLinearGradient(0, hillY, 0, height * 0.72);
-    grass.addColorStop(0, '#9fe08f');
-    grass.addColorStop(1, '#7fd47f');
+    const grass = ctx.createLinearGradient(0, this.horizonY, 0, height);
+    grass.addColorStop(0, '#b3e8a8');
+    grass.addColorStop(0.45, '#8fdc8a');
+    grass.addColorStop(1, '#58b766');
     ctx.fillStyle = grass;
-    ctx.fillRect(0, hillY + height * 0.04, width, height);
+    ctx.fillRect(0, this.horizonY, width, height - this.horizonY);
 
-    this.drawTrees(ctx, hillY + height * 0.03);
-  }
-
-  private drawHills(
-    ctx: CanvasRenderingContext2D,
-    parallax: number,
-    baseY: number,
-    amplitude: number,
-    color: string,
-  ): void {
-    const width = this.width;
-    const wavelength = width * 1.1;
-    ctx.fillStyle = color;
+    ctx.fillStyle = '#c6ecc2';
     ctx.beginPath();
-    ctx.moveTo(0, this.height);
+    ctx.moveTo(0, this.horizonY + height * 0.02);
     for (let x = 0; x <= width + 8; x += 8) {
-      const phase = ((x + this.worldX * parallax) / wavelength) * Math.PI * 2;
-      const y = baseY - Math.sin(phase) * amplitude;
+      const phase = (x / (width * 1.2)) * Math.PI * 2;
+      const y = this.horizonY - Math.sin(phase) * height * 0.025;
       ctx.lineTo(x, y);
     }
-    ctx.lineTo(width, this.height);
+    ctx.lineTo(width, this.horizonY + height * 0.02);
     ctx.closePath();
     ctx.fill();
+
+    this.drawSideScenery(ctx);
   }
 
-  private drawTrees(ctx: CanvasRenderingContext2D, baseY: number): void {
-    const side = Math.min(this.width, this.height);
-    const span = this.width + 240;
+  private drawSideScenery(ctx: CanvasRenderingContext2D): void {
+    for (let index = 0; index < 7; index++) {
+      const z = mod(index / 7 + this.scroll * 0.6, 1);
+      if (z < 0.03 || z > 0.98) {
+        continue;
+      }
 
-    for (let index = 0; index < 8; index++) {
-      const x = mod(index * 180 - this.worldX * 0.55, span) - 120;
-      const scale = 0.7 + (index % 3) * 0.18;
-      const trunkH = side * 0.045 * scale;
-      const crownR = side * 0.045 * scale;
+      const point = this.project(z, 0);
+      const size = this.side * (0.01 + z * 0.035);
+      const offset = this.side * 0.055 + size * 0.8;
+      const leftX = this.centerX - point.half - offset;
+      const rightX = this.centerX + point.half + offset;
 
-      ctx.fillStyle = '#9a6b4a';
-      ctx.fillRect(x - side * 0.006, baseY - trunkH, side * 0.012, trunkH);
+      drawTree(ctx, leftX, point.y, size);
+      drawTree(ctx, rightX, point.y, size);
+    }
 
-      ctx.fillStyle = '#6fca70';
-      ctx.beginPath();
-      ctx.arc(x, baseY - trunkH - crownR * 0.35, crownR, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#8fdc8a';
-      ctx.beginPath();
-      ctx.arc(x - crownR * 0.35, baseY - trunkH - crownR * 0.55, crownR * 0.45, 0, Math.PI * 2);
-      ctx.fill();
+    for (let index = 0; index < 5; index++) {
+      const z = mod(index / 5 + this.scroll * 0.6 + 0.12, 1);
+      if (z < 0.05 || z > 0.9) {
+        continue;
+      }
+
+      const point = this.project(z, 0);
+      const size = this.side * (0.004 + z * 0.012);
+      const offset = this.side * 0.03;
+      drawFlower(ctx, this.centerX - point.half - offset, point.y, size);
+      drawFlower(ctx, this.centerX + point.half + offset, point.y, size);
     }
   }
 
   private drawRoad(ctx: CanvasRenderingContext2D): void {
-    const width = this.width;
     const height = this.height;
-    const roadTop = height * 0.72;
-    const roadBottom = height * 0.93;
 
-    const road = ctx.createLinearGradient(0, roadTop, 0, roadBottom);
-    road.addColorStop(0, '#7a7689');
-    road.addColorStop(0.5, '#666274');
+    const road = ctx.createLinearGradient(0, this.horizonY, 0, height);
+    road.addColorStop(0, '#8a869c');
+    road.addColorStop(0.4, '#6f6b80');
     road.addColorStop(1, '#575365');
     ctx.fillStyle = road;
-    ctx.fillRect(0, roadTop, width, roadBottom - roadTop);
+    ctx.beginPath();
+    ctx.moveTo(this.centerX - this.topHalf, this.horizonY);
+    ctx.lineTo(this.centerX + this.topHalf, this.horizonY);
+    ctx.lineTo(this.centerX + this.bottomHalf, height);
+    ctx.lineTo(this.centerX - this.bottomHalf, height);
+    ctx.closePath();
+    ctx.fill();
 
-    ctx.fillStyle = '#8a869c';
-    ctx.fillRect(0, roadTop, width, 3);
-    ctx.fillStyle = '#4a4658';
-    ctx.fillRect(0, roadBottom - 3, width, 3);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.lineWidth = Math.max(2, this.side * 0.006);
+    ctx.beginPath();
+    ctx.moveTo(this.centerX - this.topHalf, this.horizonY);
+    ctx.lineTo(this.centerX - this.bottomHalf, height);
+    ctx.moveTo(this.centerX + this.topHalf, this.horizonY);
+    ctx.lineTo(this.centerX + this.bottomHalf, height);
+    ctx.stroke();
 
-    const mid = (roadTop + roadBottom) / 2;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
-    for (let index = 0; index < Math.ceil(width / 90) + 2; index++) {
-      const x = mod(index * 90 - this.worldX, width + 90) - 60;
+    for (let index = 0; index < 9; index++) {
+      const z = mod(index / 9 + this.scroll, 1);
+      if (z < 0.03) {
+        continue;
+      }
+      const point = this.project(z, 0);
+      const dashWidth = 2 + point.scale * 4;
+      const dashHeight = 6 + point.scale * 18;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
       ctx.beginPath();
-      ctx.roundRect(x, mid - 3, 46, 6, 3);
+      ctx.roundRect(
+        point.x - dashWidth / 2,
+        point.y - dashHeight / 2,
+        dashWidth,
+        dashHeight,
+        dashWidth / 2,
+      );
       ctx.fill();
     }
-
-    const bottomGrass = ctx.createLinearGradient(0, roadBottom, 0, height);
-    bottomGrass.addColorStop(0, '#7fd47f');
-    bottomGrass.addColorStop(1, '#4aa95f');
-    ctx.fillStyle = bottomGrass;
-    ctx.fillRect(0, roadBottom, width, height - roadBottom);
   }
 
-  private drawPuddle(ctx: CanvasRenderingContext2D, puddle: Puddle): void {
-    const grad = ctx.createLinearGradient(
-      puddle.x - puddle.rx,
-      puddle.y,
-      puddle.x + puddle.rx,
-      puddle.y,
-    );
-    grad.addColorStop(0, 'rgba(150, 205, 245, 0.75)');
-    grad.addColorStop(1, 'rgba(110, 175, 230, 0.8)');
+  private drawObject(
+    ctx: CanvasRenderingContext2D,
+    object: RoadObject,
+  ): void {
+    const point = this.project(object.z, object.lane);
 
-    ctx.fillStyle = grad;
+    if (object.kind === 'star') {
+      const size = this.side * 0.05 * point.scale;
+      ctx.save();
+      ctx.translate(point.x, point.y);
+      ctx.rotate(Math.sin(object.spin) * 0.2);
+      ctx.shadowColor = 'rgba(255, 210, 60, 0.9)';
+      ctx.shadowBlur = size * 1.2;
+      ctx.fillStyle = '#ffd93b';
+      drawStarPath(ctx, size);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#fff2a8';
+      drawStarPath(ctx, size * 0.5);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+
+    const rx = this.side * 0.08 * point.scale;
+    const ry = rx * 0.4;
+    const liquid = ctx.createLinearGradient(-rx, 0, rx, 0);
+    liquid.addColorStop(0, 'rgba(150, 205, 245, 0.8)');
+    liquid.addColorStop(1, 'rgba(110, 175, 230, 0.85)');
+    ctx.fillStyle = liquid;
     ctx.beginPath();
-    ctx.ellipse(puddle.x, puddle.y, puddle.rx, puddle.ry, 0, 0, Math.PI * 2);
+    ctx.ellipse(point.x, point.y, rx, ry, 0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.beginPath();
     ctx.ellipse(
-      puddle.x - puddle.rx * 0.3,
-      puddle.y - puddle.ry * 0.25,
-      puddle.rx * 0.3,
-      puddle.ry * 0.22,
+      point.x - rx * 0.3,
+      point.y - ry * 0.25,
+      rx * 0.3,
+      ry * 0.22,
       0,
       0,
       Math.PI * 2,
@@ -378,104 +418,77 @@ class DriveGame extends CanvasGame {
     ctx.fill();
   }
 
-  private drawStar(ctx: CanvasRenderingContext2D, star: Star): void {
-    ctx.save();
-    ctx.translate(star.x, star.y);
-    ctx.rotate(Math.sin(star.phase) * 0.25);
-    ctx.shadowColor = 'rgba(255, 210, 60, 0.9)';
-    ctx.shadowBlur = star.size * 1.2;
-    ctx.fillStyle = '#ffd93b';
-    drawStarPath(ctx, star.size);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#fff2a8';
-    drawStarPath(ctx, star.size * 0.5);
-    ctx.fill();
-    ctx.restore();
-  }
-
   private drawCar(ctx: CanvasRenderingContext2D): void {
     const w = this.carW;
     const h = this.carH;
-    const steer = clamp((this.targetX - this.carX) / (w * 0.8), -1, 1);
-    const bob = Math.sin(this.time * 9) * 1.4;
+    const steer = clamp((this.targetLane - this.carLane) * 2.2, -1, 1);
+    const bounce = Math.sin(this.carBounce * Math.PI) * h * 0.08;
+    const wobble = Math.sin(this.time * 10) * 1.2;
 
     ctx.save();
-    ctx.translate(this.carX, this.carY - h * 0.5 + bob);
-    ctx.rotate(steer * 0.07);
+    ctx.translate(this.carX, this.carY - bounce + wobble);
+    ctx.rotate(steer * 0.08);
 
-    ctx.fillStyle = 'rgba(40, 30, 60, 0.2)';
+    ctx.fillStyle = 'rgba(40, 30, 60, 0.22)';
     ctx.beginPath();
-    ctx.ellipse(0, h * 0.6, w * 0.56, h * 0.15, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, h * 0.52, w * 0.56, h * 0.13, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    const wheelR = h * 0.2;
-    const wheelY = h * 0.42;
-    for (const wx of [-w * 0.3, w * 0.3]) {
-      ctx.save();
-      ctx.translate(wx, wheelY);
-      ctx.rotate(this.worldX / (wheelR * 2));
-      ctx.fillStyle = '#3d3548';
-      ctx.beginPath();
-      ctx.arc(0, 0, wheelR, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#c9c2d8';
-      ctx.beginPath();
-      ctx.arc(0, 0, wheelR * 0.52, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#7a7390';
-      ctx.lineWidth = Math.max(1.2, wheelR * 0.12);
-      ctx.beginPath();
-      ctx.moveTo(-wheelR * 0.4, 0);
-      ctx.lineTo(wheelR * 0.4, 0);
-      ctx.moveTo(0, -wheelR * 0.4);
-      ctx.lineTo(0, wheelR * 0.4);
-      ctx.stroke();
-      ctx.restore();
-    }
+    ctx.fillStyle = '#3d3548';
+    ctx.beginPath();
+    ctx.roundRect(-w * 0.55, h * 0.18, w * 0.17, h * 0.32, h * 0.08);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.roundRect(w * 0.38, h * 0.18, w * 0.17, h * 0.32, h * 0.08);
+    ctx.fill();
 
     const body = ctx.createLinearGradient(0, -h * 0.5, 0, h * 0.5);
     body.addColorStop(0, '#ff9d72');
     body.addColorStop(1, '#f2704b');
     ctx.fillStyle = body;
     ctx.beginPath();
-    ctx.roundRect(-w * 0.5, -h * 0.1, w, h * 0.55, h * 0.2);
-    ctx.fill();
-
-    ctx.fillStyle = '#ffb08a';
-    ctx.beginPath();
-    ctx.roundRect(-w * 0.32, -h * 0.5, w * 0.64, h * 0.52, h * 0.2);
+    ctx.roundRect(-w * 0.5, -h * 0.5, w, h, h * 0.22);
     ctx.fill();
 
     ctx.fillStyle = '#d6f2ff';
     ctx.beginPath();
-    ctx.roundRect(-w * 0.26, -h * 0.42, w * 0.22, h * 0.3, h * 0.08);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.roundRect(w * 0.04, -h * 0.42, w * 0.22, h * 0.3, h * 0.08);
+    ctx.roundRect(-w * 0.3, -h * 0.44, w * 0.6, h * 0.34, h * 0.1);
     ctx.fill();
 
     ctx.save();
-    ctx.translate(w * 0.14, -h * 0.24);
-    drawAnimalHead(ctx, 'bear', h * 0.16, {
+    ctx.translate(0, -h * 0.27);
+    drawAnimalHead(ctx, 'bear', h * 0.13, {
       expression: 'happy',
       blush: true,
     });
     ctx.restore();
 
-    ctx.fillStyle = '#fff4a8';
-    ctx.beginPath();
-    ctx.arc(w * 0.47, h * 0.14, h * 0.07, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#d95a3c';
-    ctx.beginPath();
-    ctx.roundRect(w * 0.44, h * 0.16, w * 0.07, h * 0.14, h * 0.03);
-    ctx.fill();
-
     ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
     ctx.beginPath();
-    ctx.ellipse(-w * 0.3, h * 0.02, w * 0.16, h * 0.05, -0.2, 0, Math.PI * 2);
+    ctx.roundRect(-w * 0.26, -h * 0.4, w * 0.2, h * 0.08, h * 0.04);
+    ctx.fill();
+
+    ctx.fillStyle = '#ff5a5a';
+    ctx.beginPath();
+    ctx.arc(-w * 0.32, h * 0.2, h * 0.06, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(w * 0.32, h * 0.2, h * 0.06, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffb08a';
+    ctx.beginPath();
+    ctx.roundRect(-w * 0.46, h * 0.3, w * 0.92, h * 0.12, h * 0.05);
+    ctx.fill();
+
+    ctx.fillStyle = '#fff4a8';
+    ctx.beginPath();
+    ctx.roundRect(-w * 0.12, h * 0.31, w * 0.24, h * 0.09, h * 0.03);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.beginPath();
+    ctx.roundRect(-w * 0.42, -h * 0.48, w * 0.84, h * 0.06, h * 0.03);
     ctx.fill();
 
     ctx.restore();
@@ -496,6 +509,57 @@ function drawStarPath(ctx: CanvasRenderingContext2D, size: number): void {
     }
   }
   ctx.closePath();
+}
+
+function drawTree(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+): void {
+  ctx.fillStyle = '#9a6b4a';
+  ctx.fillRect(x - size * 0.12, y - size * 2.2, size * 0.24, size * 2.2);
+
+  ctx.fillStyle = '#6fca70';
+  ctx.beginPath();
+  ctx.arc(x, y - size * 2.6, size, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x - size * 0.62, y - size * 2.1, size * 0.62, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + size * 0.62, y - size * 2.1, size * 0.62, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#8fdc8a';
+  ctx.beginPath();
+  ctx.arc(x - size * 0.3, y - size * 2.85, size * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawFlower(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+): void {
+  ctx.fillStyle = '#fff4a8';
+  for (let petal = 0; petal < 5; petal++) {
+    const angle = (petal / 5) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(
+      x + Math.cos(angle) * size * 2,
+      y + Math.sin(angle) * size * 2,
+      size * 1.6,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+  ctx.fillStyle = '#ffb347';
+  ctx.beginPath();
+  ctx.arc(x, y, size * 1.5, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 export const driveGame: GameDefinition = {
