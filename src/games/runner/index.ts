@@ -514,11 +514,15 @@ class RunnerGame implements GameInstance {
         (0.9 + (index % 3) * 0.18);
 
       ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.arc(x + size * 0.85, y + size * 0.12, size * 0.78, 0, Math.PI * 2);
-      ctx.arc(x - size * 0.85, y + size * 0.15, size * 0.68, 0, Math.PI * 2);
-      ctx.fill();
+      for (const [dx, dy, scale] of [
+        [0, 0, 1],
+        [0.85, 0.12, 0.78],
+        [-0.85, 0.15, 0.68],
+      ] as const) {
+        ctx.beginPath();
+        ctx.arc(x + size * dx, y + size * dy, size * scale, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
 
@@ -617,7 +621,11 @@ class RunnerGame implements GameInstance {
       ctx.fillStyle = gradient;
       ctx.beginPath();
       ctx.arc(x + width * 0.3, bottom - obstacle.height * 0.42, obstacle.height * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
       ctx.arc(x + width * 0.7, bottom - obstacle.height * 0.42, obstacle.height * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
       ctx.arc(x + width * 0.5, top + obstacle.height * 0.4, obstacle.height * 0.4, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillRect(x + width * 0.1, bottom - obstacle.height * 0.4, width * 0.8, obstacle.height * 0.4);

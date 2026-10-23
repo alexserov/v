@@ -324,11 +324,15 @@ function drawCloud(
   size: number,
 ): void {
   ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
-  ctx.beginPath();
-  ctx.arc(x, y, size, 0, Math.PI * 2);
-  ctx.arc(x + size * 0.85, y + size * 0.12, size * 0.78, 0, Math.PI * 2);
-  ctx.arc(x - size * 0.85, y + size * 0.15, size * 0.68, 0, Math.PI * 2);
-  ctx.fill();
+  for (const [dx, dy, scale] of [
+    [0, 0, 1],
+    [0.85, 0.12, 0.78],
+    [-0.85, 0.15, 0.68],
+  ] as const) {
+    ctx.beginPath();
+    ctx.arc(x + size * dx, y + size * dy, size * scale, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 export const bubblesGame: GameDefinition = {
