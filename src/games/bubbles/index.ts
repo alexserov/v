@@ -56,9 +56,9 @@ class BubblesGame extends CanvasGame {
     this.time += dt;
     this.spawnTimer -= dt;
 
-    if (this.spawnTimer <= 0 && this.bubbles.length < 14) {
+    if (this.spawnTimer <= 0 && this.bubbles.length < 10) {
       this.spawnBubble();
-      this.spawnTimer = 0.34 + Math.random() * 0.42;
+      this.spawnTimer = 0.45 + Math.random() * 0.5;
     }
 
     for (const bubble of this.bubbles) {
@@ -111,7 +111,7 @@ class BubblesGame extends CanvasGame {
 
   private spawnBubble(): void {
     const side = Math.min(this.width, this.height);
-    const radius = side * (0.05 + Math.random() * 0.06);
+    const radius = side * (0.075 + Math.random() * 0.09);
     const margin = radius + 12;
     const baseX = margin + Math.random() * Math.max(1, this.width - margin * 2);
 
@@ -132,7 +132,7 @@ class BubblesGame extends CanvasGame {
   }
 
   private prepopulate(): void {
-    for (let index = 0; index < 5; index++) {
+    for (let index = 0; index < 4; index++) {
       this.spawnBubble();
       const bubble = this.bubbles[this.bubbles.length - 1];
       if (!bubble) {
