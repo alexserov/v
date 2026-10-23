@@ -35,17 +35,17 @@
 
 ## Игры
 
-| Игра | id | Жанр |
-|------|----|------|
-| [Пузырики](bubbles.md) | `bubbles` | реакция |
-| [Найди зверюшку](peekaboo.md) | `peekaboo` | прятки |
-| [Музыкальная полянка](music.md) | `music` | музыка |
-| [Покорми зверят](feed.md) | `feed` | забота |
-| [Покатушки](drive.md) | `drive` | движение |
-| [Одень зайчика](dressup.md) | `dressup` | наряды |
-| [Раскраска](coloring.md) | `coloring` | творчество |
+| Игра | id | Жанр | Статус |
+|------|----|------|--------|
+| [Пузырики](bubbles.md) | `bubbles` | реакция | ✅ |
+| [Найди зверюшку](peekaboo.md) | `peekaboo` | прятки | ✅ |
+| [Музыкальная полянка](music.md) | `music` | музыка | ✅ |
+| [Покорми зверят](feed.md) | `feed` | забота | ✅ |
+| [Покатушки](drive.md) | `drive` | движение | ✅ |
+| [Одень зайчика](dressup.md) | `dressup` | наряды | ✅ |
+| [Раскраска](coloring.md) | `coloring` | творчество | ✅ |
 
-Порядок реализации: bubbles → peekaboo → music → feed → drive →
-dressup → coloring.
+Все игры реализованы в порядке: bubbles → peekaboo → music → feed →
+drive → dressup → coloring.
 
 Резерв на будущие волны: Половинки, Цветные корзинки, Рыбалка, Башня.
