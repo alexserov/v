@@ -1,5 +1,6 @@
 import type { GameDefinition } from '../types';
 import { bubblesGame } from './bubbles';
+import { coloringGame } from './coloring';
 import { dressupGame } from './dressup';
 import { driveGame } from './drive';
 import { feedGame } from './feed';
@@ -15,6 +16,7 @@ export const games: readonly GameDefinition[] = [
   feedGame,
   driveGame,
   dressupGame,
+  coloringGame,
 ];
 
 export function findGame(id: string): GameDefinition | undefined {
