@@ -533,12 +533,10 @@ class FeedGame extends CanvasGame {
     ctx.fillStyle = grass;
     ctx.fillRect(0, horizon + height * 0.03, width, height);
 
-    this.drawRoad(ctx);
-
-    for (let index = 0; index < 7; index++) {
-      const x = mod(index * 61 + this.time * 6, width + 80) - 40;
-      const y = height * (0.73 + (index % 3) * 0.035);
-      this.drawGrassTuft(ctx, x, y, index % 2 === 0);
+    for (let index = 0; index < 10; index++) {
+      const x = mod(index * 57 + this.time * 4, width + 80) - 40;
+      const y = height * (0.57 + (index % 4) * 0.03);
+      this.drawGrassTuft(ctx, x, y, index % 3 === 0);
     }
   }
 
@@ -562,42 +560,6 @@ class FeedGame extends CanvasGame {
     ctx.lineTo(width, this.height);
     ctx.closePath();
     ctx.fill();
-  }
-
-  private drawRoad(ctx: CanvasRenderingContext2D): void {
-    const width = this.width;
-    const height = this.height;
-    const startX = -width * 0.05;
-    const startY = height * 0.57;
-    const ctrlX = width * 0.45;
-    const ctrlY = height * 0.53;
-    const endX = width * 0.96;
-    const endY = height * 0.5;
-
-    ctx.lineCap = 'round';
-
-    ctx.strokeStyle = 'rgba(180, 145, 105, 0.32)';
-    ctx.lineWidth = height * 0.072;
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    ctx.quadraticCurveTo(ctrlX, ctrlY, endX, endY);
-    ctx.stroke();
-
-    ctx.strokeStyle = '#e8cba3';
-    ctx.lineWidth = height * 0.055;
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    ctx.quadraticCurveTo(ctrlX, ctrlY, endX, endY);
-    ctx.stroke();
-
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
-    ctx.lineWidth = Math.max(2, height * 0.004);
-    ctx.setLineDash([height * 0.012, height * 0.018]);
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    ctx.quadraticCurveTo(ctrlX, ctrlY, endX, endY);
-    ctx.stroke();
-    ctx.setLineDash([]);
   }
 
   private drawGrassTuft(
@@ -829,9 +791,9 @@ class FeedGame extends CanvasGame {
     const startX = animal.x;
     const startY = animal.y;
     const ctrlX = this.width * 0.55;
-    const ctrlY = this.height * 0.48;
-    const endX = this.width * 0.96;
-    const endY = this.height * 0.5;
+    const ctrlY = this.height * 0.46;
+    const endX = this.width * 0.86;
+    const endY = this.height * 0.43;
 
     const x =
       one * one * startX + 2 * one * t * ctrlX + t * t * endX;
