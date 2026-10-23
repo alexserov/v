@@ -8,7 +8,7 @@ interface Particle {
   maxLife: number;
   size: number;
   color: string;
-  shape: 'circle' | 'star';
+  shape: 'circle' | 'star' | 'heart';
   rotation: number;
   spin: number;
 }
@@ -21,6 +21,7 @@ export interface BurstOptions {
   gravity?: number;
   life?: number;
   size?: number;
+  shape?: 'mixed' | 'star' | 'heart';
 }
 
 const DEFAULT_COLORS = ['#ffe36e', '#ff9ecb', '#a78bfa', '#ffffff', '#8fe3c8'];
@@ -56,11 +57,31 @@ export class Particles {
         maxLife: life,
         size: sizeBase * (0.6 + Math.random() * 0.8),
         color: colors[Math.floor(Math.random() * colors.length)],
-        shape: Math.random() < 0.3 ? 'star' : 'circle',
+        shape:
+          options.shape === 'heart'
+            ? 'heart'
+            : options.shape === 'star'
+              ? 'star'
+              : Math.random() < 0.3
+                ? 'star'
+                : 'circle',
         rotation: Math.random() * Math.PI * 2,
         spin: (Math.random() - 0.5) * 8,
       });
     }
+  }
+
+  hearts(x: number, y: number, count = 8): void {
+    this.burst(x, y, {
+      count,
+      shape: 'heart',
+      colors: ['#ff7fb6', '#ff9ecb', '#ff4f8b', '#ffd1e6'],
+      minSpeed: 35,
+      maxSpeed: 110,
+      gravity: -25,
+      life: 0.9,
+      size: 5,
+    });
   }
 
   update(dt: number): void {
@@ -85,6 +106,8 @@ export class Particles {
 
       if (item.shape === 'star') {
         drawStar(ctx, item.size * alpha);
+      } else if (item.shape === 'heart') {
+        drawHeart(ctx, item.size * alpha);
       } else {
         ctx.beginPath();
         ctx.arc(0, 0, item.size * alpha, 0, Math.PI * 2);
@@ -99,6 +122,16 @@ export class Particles {
   clear(): void {
     this.items = [];
   }
+}
+
+function drawHeart(ctx: CanvasRenderingContext2D, size: number): void {
+  const s = size;
+  ctx.beginPath();
+  ctx.moveTo(0, s * 0.75);
+  ctx.bezierCurveTo(-s * 1.1, -s * 0.1, -s * 0.6, -s * 0.95, 0, -s * 0.35);
+  ctx.bezierCurveTo(s * 0.6, -s * 0.95, s * 1.1, -s * 0.1, 0, s * 0.75);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function drawStar(ctx: CanvasRenderingContext2D, size: number): void {

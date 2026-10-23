@@ -59,6 +59,50 @@ export function drawAnimalHead(
   }
 }
 
+const BODY_COLORS: Record<AnimalKind, string> = {
+  bunny: '#fffdfd',
+  bear: '#c98f63',
+  fox: '#f59a4a',
+  hedgehog: '#f2d2b0',
+  kitten: '#efe6fb',
+  bird: '#ffd36e',
+};
+
+/** Draws a seated animal with the head centered at the current origin. */
+export function drawSittingAnimal(
+  ctx: CanvasRenderingContext2D,
+  kind: AnimalKind,
+  size: number,
+  options: AnimalHeadOptions = {},
+): void {
+  const body = BODY_COLORS[kind];
+
+  ctx.fillStyle = 'rgba(60, 90, 60, 0.14)';
+  ctx.beginPath();
+  ctx.ellipse(0, size * 1.75, size * 0.9, size * 0.22, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.ellipse(0, size * 0.95, size * 0.8, size * 0.72, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+  ctx.beginPath();
+  ctx.ellipse(-size * 0.35, size * 1.12, size * 0.22, size * 0.13, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.ellipse(-size * 0.4, size * 1.55, size * 0.26, size * 0.14, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(size * 0.4, size * 1.55, size * 0.26, size * 0.14, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  drawAnimalHead(ctx, kind, size, options);
+}
+
 function circle(
   ctx: CanvasRenderingContext2D,
   x: number,
