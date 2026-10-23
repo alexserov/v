@@ -309,7 +309,7 @@ class RunnerGame implements GameInstance {
   }
 
   private spawnFood(): void {
-    const radius = this.playerRadius * 0.5;
+    const radius = this.playerRadius * 0.85;
     const types: FoodType[] = [
       'carrot',
       'broccoli',
@@ -317,19 +317,33 @@ class RunnerGame implements GameInstance {
       'strawberry',
       'blueberry',
     ];
-    const cluster = Math.random() < 0.4 ? 3 : 1;
+    // Groups of three are a rare treat now.
+    const cluster = Math.random() < 0.15 ? 3 : 1;
     const startX = this.width + 40;
 
+    // Height tiers: low and easy, a normal jump, and high ones that need
+    // the second jump to reach.
+    const tier = Math.random();
+    let baseHeight: number;
+
+    if (tier < 0.25) {
+      baseHeight = this.playerRadius * (9 + Math.random() * 2);
+    } else if (tier < 0.6) {
+      baseHeight = this.playerRadius * (4 + Math.random() * 2.5);
+    } else {
+      baseHeight = this.playerRadius * (1.2 + Math.random() * 1.8);
+    }
+
     for (let index = 0; index < cluster; index++) {
+      const arc =
+        cluster > 1 ? ((index + 0.5) / cluster) * Math.PI : 0;
       const height =
         cluster > 1
-          ? this.playerRadius *
-            (1 +
-              Math.sin(((index + 0.5) / cluster) * Math.PI) * 1.7)
-          : this.playerRadius * (1 + Math.random() * 2.2);
+          ? baseHeight * (0.85 + Math.sin(arc) * 0.3)
+          : baseHeight;
 
       this.foods.push({
-        x: startX + index * this.playerRadius * 1.5,
+        x: startX + index * this.playerRadius * 2,
         y: height,
         radius,
         type: types[Math.floor(Math.random() * types.length)],
@@ -803,9 +817,9 @@ class RunnerGame implements GameInstance {
     ctx.save();
     ctx.translate(x, y);
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.beginPath();
-    ctx.arc(0, 0, size * 1.2, 0, Math.PI * 2);
+    ctx.arc(0, 0, size * 1.15, 0, Math.PI * 2);
     ctx.fill();
 
     switch (food.type) {
