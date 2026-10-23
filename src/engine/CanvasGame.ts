@@ -117,6 +117,10 @@ export abstract class CanvasGame implements GameInstance {
   }
 
   private handlePointerDown = (event: PointerEvent): void => {
+    // Let DOM controls (e.g. the wardrobe) handle their own taps.
+    if (event.target !== this.canvas) {
+      return;
+    }
     if (event.pointerType === 'mouse' && event.button !== 0) {
       return;
     }

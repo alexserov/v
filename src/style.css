@@ -282,3 +282,88 @@ body {
   line-height: 1;
   transform: translateY(-1px);
 }
+
+.wardrobe {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px calc(env(safe-area-inset-bottom) + 12px);
+  pointer-events: none;
+}
+
+.wardrobe__tabs {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.wardrobe__tab {
+  width: 50px;
+  height: 50px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.78);
+  font-size: 24px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 5px 14px rgba(90, 50, 120, 0.16);
+  touch-action: manipulation;
+  transition: transform 120ms ease, background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.wardrobe__tab.is-active {
+  background: #ffd1e6;
+  transform: translateY(-3px) scale(1.05);
+  box-shadow: 0 8px 18px rgba(90, 50, 120, 0.22);
+}
+
+.wardrobe__tab:active {
+  transform: scale(0.92);
+}
+
+.wardrobe__items {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  min-height: 62px;
+  pointer-events: auto;
+}
+
+.wardrobe__item {
+  width: 62px;
+  height: 62px;
+  border: none;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.82);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 5px 14px rgba(90, 50, 120, 0.16);
+  touch-action: manipulation;
+  transition: transform 120ms ease, box-shadow 120ms ease,
+    background 120ms ease;
+}
+
+.wardrobe__item.is-active {
+  outline: 3px solid #ff8fbf;
+  background: #fff;
+  transform: translateY(-2px);
+}
+
+.wardrobe__item:active {
+  transform: scale(0.92);
+}
+
+.wardrobe__item canvas {
+  display: block;
+  width: 50px;
+  height: 50px;
+}
