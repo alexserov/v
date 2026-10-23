@@ -1,0 +1,88 @@
+# Мини-игры
+
+Сборник мини-игр для малышей. Устанавливается на телефон как PWA
+(иконка на домашнем экране, полноэкранный режим, работа офлайн).
+
+## Стек
+
+- **Vite + TypeScript** (vanilla, без UI-фреймворка)
+- **Canvas 2D** для игр
+- **vite-plugin-pwa** — манифест, service worker, офлайн-кэш
+
+## Команды
+
+```bash
+npm install       # установить зависимости
+npm run dev       # dev-сервер (доступен по сети: --host)
+npm run build     # проверка типов + production-сборка в dist/
+npm run preview   # локальный просмотр сборки
+npm run icons     # перегенерировать иконки PWA
+```
+
+## Структура
+
+```
+src/
+├─ main.ts                 # точка входа и роутер (#/ и #/game/<id>)
+├─ home.ts                 # главный экран с тайлами
+├─ types.ts                # интерфейсы игры
+├─ ui/backButton.ts        # кнопка «назад»
+└─ games/
+   ├─ registry.ts          # список игр
+   └─ runner/index.ts      # первая игра — «Бегунок»
+scripts/generate-icons.mjs # генератор иконок (без внешних зависимостей)
+public/icons/              # готовые иконки 192/512/maskable/apple
+```
+
+## Как добавить игру
+
+1. Создайте `src/games/<id>/index.ts` и экспортируйте `GameDefinition`:
+
+   ```ts
+   import type { GameDefinition, GameInstance } from '../../types';
+
+   class MyGame implements GameInstance {
+     mount(host: HTMLElement) { /* нарисовать игру в host */ }
+     destroy() { /* остановить таймеры и слушатели */ }
+   }
+
+   export const myGame: GameDefinition = {
+     id: 'my-game',
+     title: 'Название',
+     icon: '⭐',
+     colors: ['#a0e7ff', '#5aa9ff'],
+     create: () => new MyGame(),
+   };
+   ```
+
+2. Добавьте игру в `src/games/registry.ts`:
+
+   ```ts
+   export const games: readonly GameDefinition[] = [runnerGame, myGame];
+   ```
+
+Тайл на главном экране и маршрут `#/game/my-game` появятся автоматически.
+Кнопка «назад» общая и уже отображается поверх любой игры.
+
+## Первая игра — «Бегунок» 🐰
+
+- Персонаж бесконечно бежит, тап в любом месте — прыжок
+  (доступен двойной прыжок).
+- Бесконечный режим **без проигрыша**: столкновение с препятствием
+  даёт мягкий подскок и искры, игра продолжается.
+- Поддержка клавиатуры (Пробел / ↑) для проверки на компьютере.
+
+## Установка на телефон
+
+PWA устанавливается с **HTTPS** (или `localhost`). Обычный `http://<ip-адрес>`
+по локальной сети не подойдёт для service worker.
+
+Варианты:
+
+1. Задеплоить `dist/` на любой HTTPS-хостинг (Netlify, Vercel, GitHub Pages
+   и т.п.).
+2. Открыть адрес на телефоне → «Поделиться» → «На экран “Домой”» (iOS)
+   или меню браузера → «Установить приложение» (Android).
+
+Для локальной проверки на телефоне можно использовать HTTPS-туннель
+(например, `npx localtunnel --port 4173` или `cloudflared`).
