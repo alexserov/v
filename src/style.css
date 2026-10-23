@@ -283,6 +283,57 @@ body {
   transform: translateY(-1px);
 }
 
+.coloring-toolbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom) + 112px);
+  z-index: 7;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  pointer-events: none;
+}
+
+.coloring-tool {
+  pointer-events: auto;
+  min-width: 58px;
+  border: none;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 6px 16px rgba(90, 50, 120, 0.18);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 7px 10px;
+  color: #6a3f86;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+
+.coloring-tool__icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.coloring-tool__label {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.coloring-tool:active {
+  transform: scale(0.92);
+}
+
+.coloring-tool:disabled {
+  opacity: 0.38;
+}
+
 .peekaboo-target {
   position: absolute;
   top: calc(env(safe-area-inset-top) + 10px);
