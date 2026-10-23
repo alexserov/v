@@ -2,6 +2,14 @@ import './style.css';
 import { renderHome } from './home';
 import { findGame, games } from './games/registry';
 import { createBackButton } from './ui/backButton';
+import { createSoundButton } from './ui/soundButton';
+import { sound } from './engine/sound';
+
+const unlockAudio = (): void => {
+  sound.unlock();
+  window.removeEventListener('pointerdown', unlockAudio);
+};
+window.addEventListener('pointerdown', unlockAudio, { passive: true });
 
 const rootElement = document.getElementById('app');
 if (!rootElement) {
@@ -34,7 +42,9 @@ function renderGameScreen(gameId: string): boolean {
     location.hash = '/';
   });
 
-  screen.append(host, back);
+  const soundButton = createSoundButton();
+
+  screen.append(host, back, soundButton);
   root.append(screen);
 
   const instance = game.create();

@@ -1,4 +1,5 @@
 import type { GameDefinition, GameInstance } from '../../types';
+import { sound } from '../../engine/sound';
 
 type ObstacleType = 'bush' | 'rock' | 'mushroom';
 
@@ -245,6 +246,7 @@ class RunnerGame implements GameInstance {
         this.grounded = false;
         this.jumps = 1;
       }
+      sound.pop(1.5);
       this.emitSparkles(
         obstacle.x + obstacle.width / 2,
         this.groundY - obstacle.height * 0.6,
@@ -354,6 +356,7 @@ class RunnerGame implements GameInstance {
 
   private collectFood(food: Food): void {
     this.collected += 1;
+    sound.collect();
     this.emitSparkles(food.x, this.groundY - food.y, 9);
 
     if (!this.scoreValue) {
@@ -396,6 +399,7 @@ class RunnerGame implements GameInstance {
     this.grounded = false;
     this.jumps += 1;
     this.squash = 0.25;
+    sound.boing();
     this.emitSparkles(
       this.width * 0.22,
       this.groundY - this.playerY - this.playerRadius,
