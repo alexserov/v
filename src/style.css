@@ -367,17 +367,18 @@ body {
 .wardrobe__tabs {
   display: flex;
   justify-content: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
   pointer-events: auto;
 }
 
 .wardrobe__tab {
-  width: 50px;
-  height: 50px;
+  width: 46px;
+  height: 46px;
   border: none;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.78);
-  font-size: 24px;
+  font-size: 22px;
   display: grid;
   place-items: center;
   cursor: pointer;

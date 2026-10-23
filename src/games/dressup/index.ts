@@ -3,7 +3,13 @@ import { Particles } from '../../engine/particles';
 import { sound } from '../../engine/sound';
 import type { GameDefinition } from '../../types';
 
-type Category = 'hat' | 'scarf' | 'glasses' | 'bow';
+type Category =
+  | 'hat'
+  | 'scarf'
+  | 'glasses'
+  | 'gloves'
+  | 'sweater'
+  | 'shoes';
 type Outfit = Record<Category, string | null>;
 
 interface AccessoryDef {
@@ -17,7 +23,9 @@ const CATEGORIES: ReadonlyArray<{ id: Category; icon: string; label: string }> =
   { id: 'hat', icon: '🎩', label: 'Шапочки' },
   { id: 'scarf', icon: '🧣', label: 'Шарфики' },
   { id: 'glasses', icon: '👓', label: 'Очки' },
-  { id: 'bow', icon: '🎀', label: 'Бантики' },
+  { id: 'gloves', icon: '🧤', label: 'Перчатки' },
+  { id: 'sweater', icon: '🧥', label: 'Кофточки' },
+  { id: 'shoes', icon: '👟', label: 'Обувь' },
 ];
 
 const ACCESSORIES: readonly AccessoryDef[] = [
@@ -36,10 +44,20 @@ const ACCESSORIES: readonly AccessoryDef[] = [
   { id: 'glasses-heart', category: 'glasses', color: '#ff6f91', style: 'heart' },
   { id: 'glasses-star', category: 'glasses', color: '#ffb347', style: 'star' },
 
-  { id: 'bow-pink', category: 'bow', color: '#ff7fb6' },
-  { id: 'bow-mint', category: 'bow', color: '#5ed0b0' },
-  { id: 'bow-purple', category: 'bow', color: '#9b7bff' },
-  { id: 'bow-red', category: 'bow', color: '#ff6f6f' },
+  { id: 'gloves-pink', category: 'gloves', color: '#ff7fb6' },
+  { id: 'gloves-mint', category: 'gloves', color: '#5ed0b0' },
+  { id: 'gloves-purple', category: 'gloves', color: '#9b7bff' },
+  { id: 'gloves-blue', category: 'gloves', color: '#7fc8ff' },
+
+  { id: 'sweater-pink', category: 'sweater', color: '#ffb3d9' },
+  { id: 'sweater-mint', category: 'sweater', color: '#8fe3c8' },
+  { id: 'sweater-purple', category: 'sweater', color: '#b8a6ff' },
+  { id: 'sweater-yellow', category: 'sweater', color: '#ffd36e' },
+
+  { id: 'shoes-red', category: 'shoes', color: '#ff6f6f' },
+  { id: 'shoes-blue', category: 'shoes', color: '#7fc8ff' },
+  { id: 'shoes-green', category: 'shoes', color: '#5ed0b0' },
+  { id: 'shoes-purple', category: 'shoes', color: '#9b7bff' },
 ];
 
 const findAccessory = (id: string | null): AccessoryDef | undefined =>
@@ -50,7 +68,9 @@ class DressupGame extends CanvasGame {
     hat: null,
     scarf: null,
     glasses: null,
-    bow: null,
+    gloves: null,
+    sweater: null,
+    shoes: null,
   };
   private category: Category = 'hat';
 
@@ -153,14 +173,6 @@ class DressupGame extends CanvasGame {
       tabs.append(tab);
     }
 
-    const surprise = document.createElement('button');
-    surprise.type = 'button';
-    surprise.className = 'wardrobe__tab';
-    surprise.textContent = '🎲';
-    surprise.setAttribute('aria-label', 'Сюрприз');
-    surprise.addEventListener('click', () => this.surprise());
-    tabs.append(surprise);
-
     const items = document.createElement('div');
     items.className = 'wardrobe__items';
 
@@ -241,31 +253,6 @@ class DressupGame extends CanvasGame {
       life: 0.65,
       gravity: 140,
       size: 3.2,
-    });
-
-    this.renderItems();
-  }
-
-  private surprise(): void {
-    for (const category of CATEGORIES) {
-      this.outfit[category.id] =
-        Math.random() < 0.8
-          ? ACCESSORIES.filter((item) => item.category === category.id)[
-              Math.floor(Math.random() * 4)
-            ]?.id ?? null
-          : null;
-    }
-
-    this.react = 1;
-    sound.sparkle();
-    this.particles.burst(this.bunnyX, this.bunnyY, {
-      count: 22,
-      colors: ['#ffe36e', '#ff9ecb', '#a78bfa', '#ffffff', '#8fe3c8'],
-      minSpeed: 60,
-      maxSpeed: 220,
-      life: 0.8,
-      gravity: 140,
-      size: 3.5,
     });
 
     this.renderItems();
@@ -424,6 +411,30 @@ function drawBunny(
   ctx.arc(0, r * 0.34, r * 0.16, Math.PI * 0.15, Math.PI * 0.85);
   ctx.stroke();
 
+  const sweater = findAccessory(outfit.sweater);
+  if (sweater) {
+    ctx.save();
+    ctx.translate(0, r * 1.72);
+    drawAccessory(ctx, sweater, r * 1.05);
+    ctx.restore();
+  }
+
+  const shoes = findAccessory(outfit.shoes);
+  if (shoes) {
+    ctx.save();
+    ctx.translate(0, r * 2.8);
+    drawAccessory(ctx, shoes, r * 0.95);
+    ctx.restore();
+  }
+
+  const gloves = findAccessory(outfit.gloves);
+  if (gloves) {
+    ctx.save();
+    ctx.translate(0, r * 1.9);
+    drawAccessory(ctx, gloves, r * 0.95);
+    ctx.restore();
+  }
+
   const scarf = findAccessory(outfit.scarf);
   if (scarf) {
     ctx.save();
@@ -445,14 +456,6 @@ function drawBunny(
     ctx.save();
     ctx.translate(0, -r * 0.88);
     drawAccessory(ctx, hat, r * 0.95);
-    ctx.restore();
-  }
-
-  const bow = findAccessory(outfit.bow);
-  if (bow) {
-    ctx.save();
-    ctx.translate(-r * 0.72, -r * 1.35);
-    drawAccessory(ctx, bow, r * 0.55);
     ctx.restore();
   }
 
@@ -498,8 +501,14 @@ function drawAccessory(
     case 'glasses':
       drawGlasses(ctx, item, size);
       break;
-    case 'bow':
-      drawBow(ctx, item, size);
+    case 'gloves':
+      drawGloves(ctx, item, size);
+      break;
+    case 'sweater':
+      drawSweater(ctx, item, size);
+      break;
+    case 'shoes':
+      drawShoes(ctx, item, size);
       break;
   }
 }
@@ -702,44 +711,158 @@ function drawGlasses(
   ctx.stroke();
 }
 
-function drawBow(
+function drawGloves(
+  ctx: CanvasRenderingContext2D,
+  item: AccessoryDef,
+  size: number,
+): void {
+  for (const side of [-1, 1]) {
+    const x = side * size;
+
+    ctx.fillStyle = item.color;
+    ctx.beginPath();
+    ctx.ellipse(x, 0, size * 0.28, size * 0.42, side * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(
+      x - side * size * 0.24,
+      -size * 0.04,
+      size * 0.1,
+      size * 0.18,
+      side * 0.45,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.beginPath();
+    ctx.roundRect(
+      x - size * 0.28,
+      size * 0.24,
+      size * 0.56,
+      size * 0.16,
+      size * 0.08,
+    );
+    ctx.fill();
+  }
+}
+
+function drawSweater(
   ctx: CanvasRenderingContext2D,
   item: AccessoryDef,
   size: number,
 ): void {
   ctx.fillStyle = item.color;
+
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(
+      side * size * 0.95,
+      -size * 0.3,
+      size * 0.3,
+      size * 0.5,
+      side * 0.25,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+
   ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(-size * 0.95, -size * 0.55);
-  ctx.quadraticCurveTo(-size * 1.1, 0, -size * 0.95, size * 0.55);
-  ctx.closePath();
+  ctx.roundRect(
+    -size * 0.95,
+    -size * 0.9,
+    size * 1.9,
+    size * 1.75,
+    size * 0.32,
+  );
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+  ctx.beginPath();
+  ctx.ellipse(0, -size * 0.82, size * 0.55, size * 0.16, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(size * 0.95, -size * 0.55);
-  ctx.quadraticCurveTo(size * 1.1, 0, size * 0.95, size * 0.55);
-  ctx.closePath();
+  ctx.roundRect(
+    -size * 0.85,
+    size * 0.62,
+    size * 1.7,
+    size * 0.18,
+    size * 0.09,
+  );
   ctx.fill();
 
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.32)';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+  const heart = size * 0.14;
+  const heartY = -size * 0.08;
   ctx.beginPath();
-  ctx.ellipse(-size * 0.55, -size * 0.2, size * 0.22, size * 0.1, -0.4, 0, Math.PI * 2);
+  ctx.moveTo(0, heartY + heart * 0.8);
+  ctx.bezierCurveTo(
+    -heart * 1.2,
+    heartY,
+    -heart * 0.6,
+    heartY - heart,
+    0,
+    heartY - heart * 0.3,
+  );
+  ctx.bezierCurveTo(
+    heart * 0.6,
+    heartY - heart,
+    heart * 1.2,
+    heartY,
+    0,
+    heartY + heart * 0.8,
+  );
   ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(size * 0.55, -size * 0.2, size * 0.22, size * 0.1, 0.4, 0, Math.PI * 2);
-  ctx.fill();
+}
 
-  ctx.fillStyle = '#fff4a8';
-  ctx.beginPath();
-  ctx.arc(0, 0, size * 0.24, 0, Math.PI * 2);
-  ctx.fill();
+function drawShoes(
+  ctx: CanvasRenderingContext2D,
+  item: AccessoryDef,
+  size: number,
+): void {
+  for (const side of [-1, 1]) {
+    const x = side * size * 0.58;
+
+    ctx.fillStyle = item.color;
+    ctx.beginPath();
+    ctx.ellipse(x, 0, size * 0.36, size * 0.22, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+    ctx.beginPath();
+    ctx.ellipse(
+      x + side * size * 0.12,
+      -size * 0.05,
+      size * 0.14,
+      size * 0.08,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.beginPath();
+    ctx.ellipse(x, size * 0.14, size * 0.36, size * 0.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.lineWidth = Math.max(1, size * 0.04);
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.12, -size * 0.02);
+    ctx.lineTo(x + size * 0.12, -size * 0.02);
+    ctx.stroke();
+  }
 }
 
 export const dressupGame: GameDefinition = {
   id: 'dressup',
   title: 'Одень зайчика',
-  icon: '🎀',
+  icon: '🧥',
   colors: ['#ffb3d9', '#9b7bff'],
   create: () => new DressupGame(),
 };
