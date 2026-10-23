@@ -124,6 +124,59 @@ body {
   height: 100%;
 }
 
+.runner-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.runner-score {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 12px);
+  right: calc(env(safe-area-inset-right) + 12px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 6px 16px rgba(90, 50, 120, 0.18);
+  color: #6a3f86;
+  font-size: 22px;
+  font-weight: 800;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.runner-score__icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.runner-score__value {
+  display: inline-block;
+  min-width: 1ch;
+  line-height: 1;
+}
+
+.runner-score__value.is-pop {
+  animation: score-pop 280ms ease;
+}
+
+@keyframes score-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.7);
+    color: #ff8fbf;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 .back-button {
   position: absolute;
   top: calc(env(safe-area-inset-top) + 12px);

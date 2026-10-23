@@ -21,6 +21,17 @@ interface Sparkle {
   color: string;
 }
 
+type FoodType = 'carrot' | 'broccoli' | 'apple' | 'strawberry' | 'blueberry';
+
+interface Food {
+  x: number;
+  /** Height of the item's center above the ground. */
+  y: number;
+  radius: number;
+  type: FoodType;
+  bobPhase: number;
+}
+
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
@@ -54,6 +65,11 @@ class RunnerGame implements GameInstance {
   private sparkles: Sparkle[] = [];
   private spawnTimer = 1.1;
 
+  private foods: Food[] = [];
+  private foodTimer = 0.8;
+  private collected = 0;
+  private scoreValue: HTMLElement | null = null;
+
   private jumpVelocity = 0;
   private gravity = 0;
 
@@ -66,6 +82,27 @@ class RunnerGame implements GameInstance {
 
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+
+    const hud = document.createElement('div');
+    hud.className = 'runner-hud';
+
+    const score = document.createElement('div');
+    score.className = 'runner-score';
+
+    const scoreIcon = document.createElement('span');
+    scoreIcon.className = 'runner-score__icon';
+    scoreIcon.setAttribute('aria-hidden', 'true');
+    scoreIcon.textContent = '🧺';
+
+    const scoreValue = document.createElement('span');
+    scoreValue.className = 'runner-score__value';
+    scoreValue.textContent = '0';
+    scoreValue.setAttribute('aria-live', 'polite');
+
+    score.append(scoreIcon, scoreValue);
+    hud.append(score);
+    host.append(hud);
+    this.scoreValue = scoreValue;
 
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(host);
@@ -91,6 +128,7 @@ class RunnerGame implements GameInstance {
     this.host = null;
     this.canvas = null;
     this.ctx = null;
+    this.scoreValue = null;
   }
 
   private resize(): void {
@@ -167,6 +205,17 @@ class RunnerGame implements GameInstance {
       (obstacle) => obstacle.x + obstacle.width > -60,
     );
 
+    this.foodTimer -= dt;
+    if (this.foodTimer <= 0) {
+      this.spawnFood();
+      this.foodTimer = 0.55 + Math.random() * 0.65;
+    }
+
+    for (const food of this.foods) {
+      food.x -= speed * dt;
+      food.bobPhase += dt * 3;
+    }
+
     const playerLeft = this.width * 0.22 - this.playerRadius * 0.62;
     const playerRight = this.width * 0.22 + this.playerRadius * 0.62;
     const playerTop =
@@ -203,6 +252,28 @@ class RunnerGame implements GameInstance {
       );
     }
 
+    const playerCenterX = this.width * 0.22;
+    const playerCenterY =
+      this.groundY - this.playerY - this.playerRadius * 1.05;
+    const reach = this.playerRadius * 0.95;
+
+    this.foods = this.foods.filter((food) => {
+      if (food.x + food.radius < -40) {
+        return false;
+      }
+
+      const dx = food.x - playerCenterX;
+      const dy = this.groundY - food.y - playerCenterY;
+      const limit = reach + food.radius;
+
+      if (dx * dx + dy * dy <= limit * limit) {
+        this.collectFood(food);
+        return false;
+      }
+
+      return true;
+    });
+
     for (const sparkle of this.sparkles) {
       sparkle.life -= dt;
       sparkle.x += sparkle.vx * dt;
@@ -235,6 +306,50 @@ class RunnerGame implements GameInstance {
       type,
       hit: false,
     });
+  }
+
+  private spawnFood(): void {
+    const radius = this.playerRadius * 0.5;
+    const types: FoodType[] = [
+      'carrot',
+      'broccoli',
+      'apple',
+      'strawberry',
+      'blueberry',
+    ];
+    const cluster = Math.random() < 0.4 ? 3 : 1;
+    const startX = this.width + 40;
+
+    for (let index = 0; index < cluster; index++) {
+      const height =
+        cluster > 1
+          ? this.playerRadius *
+            (1 +
+              Math.sin(((index + 0.5) / cluster) * Math.PI) * 1.7)
+          : this.playerRadius * (1 + Math.random() * 2.2);
+
+      this.foods.push({
+        x: startX + index * this.playerRadius * 1.5,
+        y: height,
+        radius,
+        type: types[Math.floor(Math.random() * types.length)],
+        bobPhase: Math.random() * Math.PI * 2,
+      });
+    }
+  }
+
+  private collectFood(food: Food): void {
+    this.collected += 1;
+    this.emitSparkles(food.x, this.groundY - food.y, 9);
+
+    if (!this.scoreValue) {
+      return;
+    }
+
+    this.scoreValue.textContent = String(this.collected);
+    this.scoreValue.classList.remove('is-pop');
+    void this.scoreValue.offsetWidth;
+    this.scoreValue.classList.add('is-pop');
   }
 
   private emitSparkles(x: number, y: number, count: number): void {
@@ -300,6 +415,10 @@ class RunnerGame implements GameInstance {
 
     for (const obstacle of this.obstacles) {
       this.drawObstacle(ctx, obstacle);
+    }
+
+    for (const food of this.foods) {
+      this.drawFood(ctx, food);
     }
 
     this.drawPlayer(ctx);
@@ -673,6 +792,202 @@ class RunnerGame implements GameInstance {
     ctx.fill();
 
     ctx.restore();
+  }
+
+  private drawFood(ctx: CanvasRenderingContext2D, food: Food): void {
+    const size = food.radius;
+    const x = food.x;
+    const y =
+      this.groundY - food.y + Math.sin(food.bobPhase) * size * 0.12;
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 1.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    switch (food.type) {
+      case 'carrot':
+        this.drawCarrot(ctx, size);
+        break;
+      case 'broccoli':
+        this.drawBroccoli(ctx, size);
+        break;
+      case 'apple':
+        this.drawApple(ctx, size);
+        break;
+      case 'strawberry':
+        this.drawStrawberry(ctx, size);
+        break;
+      case 'blueberry':
+        this.drawBlueberry(ctx, size);
+        break;
+    }
+
+    ctx.restore();
+  }
+
+  private drawCarrot(ctx: CanvasRenderingContext2D, size: number): void {
+    const s = size;
+
+    ctx.save();
+    ctx.rotate(0.12);
+
+    ctx.fillStyle = '#ff8a3d';
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.55, -s * 0.3);
+    ctx.quadraticCurveTo(0, -s * 0.5, s * 0.55, -s * 0.3);
+    ctx.lineTo(0, s * 0.95);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+    ctx.lineWidth = s * 0.09;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.25, -s * 0.02);
+    ctx.lineTo(s * 0.12, s * 0.08);
+    ctx.moveTo(-s * 0.15, s * 0.32);
+    ctx.lineTo(s * 0.2, s * 0.4);
+    ctx.stroke();
+
+    ctx.fillStyle = '#5cbb66';
+    ctx.beginPath();
+    ctx.ellipse(-s * 0.32, -s * 0.56, s * 0.18, s * 0.34, -0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(s * 0.32, -s * 0.56, s * 0.18, s * 0.34, 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(0, -s * 0.68, s * 0.16, s * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  private drawBroccoli(ctx: CanvasRenderingContext2D, size: number): void {
+    const s = size;
+
+    ctx.fillStyle = '#c8e7a4';
+    ctx.beginPath();
+    ctx.roundRect(-s * 0.18, s * 0.05, s * 0.36, s * 0.85, s * 0.15);
+    ctx.fill();
+
+    const florets: ReadonlyArray<readonly [number, number, number]> = [
+      [-s * 0.36, -s * 0.15, s * 0.4],
+      [s * 0.36, -s * 0.15, s * 0.4],
+      [0, -s * 0.5, s * 0.46],
+      [0, -s * 0.15, s * 0.38],
+    ];
+
+    ctx.fillStyle = '#4fae52';
+    for (const [fx, fy, fr] of florets) {
+      ctx.beginPath();
+      ctx.arc(fx, fy, fr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+    for (const [fx, fy, fr] of florets) {
+      ctx.beginPath();
+      ctx.arc(fx - fr * 0.25, fy - fr * 0.3, fr * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  private drawApple(ctx: CanvasRenderingContext2D, size: number): void {
+    const s = size;
+
+    ctx.fillStyle = '#ef4f5f';
+    ctx.beginPath();
+    ctx.ellipse(0, s * 0.08, s * 0.72, s * 0.62, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#7a4a2b';
+    ctx.lineWidth = s * 0.13;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, -s * 0.45);
+    ctx.lineTo(s * 0.06, -s * 0.9);
+    ctx.stroke();
+
+    ctx.fillStyle = '#5cbb66';
+    ctx.beginPath();
+    ctx.ellipse(s * 0.3, -s * 0.78, s * 0.28, s * 0.15, -0.55, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.beginPath();
+    ctx.ellipse(-s * 0.26, -s * 0.05, s * 0.15, s * 0.22, 0.35, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  private drawStrawberry(ctx: CanvasRenderingContext2D, size: number): void {
+    const s = size;
+
+    ctx.fillStyle = '#f0465e';
+    ctx.beginPath();
+    ctx.moveTo(0, s * 0.95);
+    ctx.bezierCurveTo(-s * 1.05, s * 0.15, -s * 0.75, -s * 0.7, 0, -s * 0.45);
+    ctx.bezierCurveTo(s * 0.75, -s * 0.7, s * 1.05, s * 0.15, 0, s * 0.95);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#ffe8a8';
+    const seeds: ReadonlyArray<readonly [number, number]> = [
+      [-0.35, 0.05],
+      [0.35, 0.05],
+      [0, 0.35],
+      [-0.45, 0.45],
+      [0.45, 0.45],
+    ];
+    for (const [sx, sy] of seeds) {
+      ctx.beginPath();
+      ctx.arc(sx * s, sy * s, s * 0.07, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = '#5cbb66';
+    for (const angle of [-0.8, -0.27, 0.27, 0.8]) {
+      ctx.save();
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.ellipse(0, -s * 0.62, s * 0.16, s * 0.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  private drawBlueberry(ctx: CanvasRenderingContext2D, size: number): void {
+    const s = size;
+
+    ctx.fillStyle = '#6c63c9';
+    ctx.beginPath();
+    ctx.arc(0, s * 0.08, s * 0.62, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.beginPath();
+    ctx.arc(-s * 0.22, -s * 0.12, s * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#4b4694';
+    ctx.beginPath();
+    for (let index = 0; index < 10; index++) {
+      const angle = -Math.PI / 2 + (index * Math.PI) / 5;
+      const radius = index % 2 === 0 ? s * 0.3 : s * 0.14;
+      const px = Math.cos(angle) * radius;
+      const py = -s * 0.42 + Math.sin(angle) * radius * 0.7;
+      if (index === 0) {
+        ctx.moveTo(px, py);
+      } else {
+        ctx.lineTo(px, py);
+      }
+    }
+    ctx.closePath();
+    ctx.fill();
   }
 
   private drawSparkles(ctx: CanvasRenderingContext2D): void {
